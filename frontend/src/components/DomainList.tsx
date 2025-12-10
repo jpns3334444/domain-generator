@@ -28,7 +28,7 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
           Domain extensions
           <span className="text-zinc-600 ml-2">({takenCount} taken)</span>
         </h3>
-        <span className="text-purple-400 text-sm cursor-pointer hover:text-purple-300">See all</span>
+        <span className="text-mauve text-sm cursor-pointer hover:text-mauve-hover">See all</span>
       </div>
 
       {/* Three column grid that fills row by row */}

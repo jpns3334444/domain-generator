@@ -45,14 +45,14 @@ export default function TldSelector({ selectedTlds, onTldChange }: TldSelectorPr
         <div className="flex gap-2">
           <button
             onClick={selectPopular}
-            className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+            className="text-xs text-mauve hover:text-mauve-hover transition-colors"
           >
             Popular
           </button>
           <span className="text-zinc-600">|</span>
           <button
             onClick={selectAll}
-            className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+            className="text-xs text-mauve hover:text-mauve-hover transition-colors"
           >
             All
           </button>
@@ -67,7 +67,7 @@ export default function TldSelector({ selectedTlds, onTldChange }: TldSelectorPr
               onClick={() => toggleTld(tld)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 isSelected
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-mauve text-zinc-900'
                   : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
               }`}
             >

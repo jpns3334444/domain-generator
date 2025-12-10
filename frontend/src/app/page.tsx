@@ -183,7 +183,7 @@ export default function Home() {
           {domains.length === 0 && isGenerating && (
             <div className="text-center py-12">
               <div className="inline-flex items-center gap-3 text-zinc-400">
-                <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-mauve border-t-transparent rounded-full animate-spin" />
                 <span>Generating domain names with AI...</span>
               </div>
             </div>

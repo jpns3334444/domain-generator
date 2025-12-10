@@ -147,7 +147,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             onFocus={handleInputFocus}
             onKeyDown={handleKeyDown}
             placeholder={mode === 'generate' ? placeholder : 'Enter domain name...'}
-            className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none py-2 caret-purple-500"
+            className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none py-2 caret-mauve"
             autoComplete="off"
             spellCheck={false}
           />
@@ -160,7 +160,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
               onClick={() => handleModeChange('generate')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 mode === 'generate'
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-mauve text-zinc-900'
                   : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
               }`}
             >
@@ -171,7 +171,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
               onClick={() => handleModeChange('search')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 mode === 'search'
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-mauve text-zinc-900'
                   : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
               }`}
             >
@@ -195,7 +195,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             <button
               onClick={handleSubmit}
               disabled={isGenerating || (mode === 'search' && !inputValue.trim())}
-              className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
+              className="bg-mauve hover:bg-mauve-hover disabled:bg-mauve-disabled disabled:cursor-not-allowed text-zinc-900 px-6 py-2 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
             >
               {mode === 'generate' ? (
                 <>
