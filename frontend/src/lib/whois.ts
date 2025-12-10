@@ -1,6 +1,9 @@
 export interface WhoisResult {
   domain: string;
   available: boolean;
+  premium?: boolean;
+  aftermarket?: boolean;
+  status?: string;
   error?: string;
 }
 
@@ -10,10 +13,13 @@ export async function checkDomainAvailability(domain: string): Promise<WhoisResu
   if (!WHOIS_API_URL) {
     // Fallback: simulate response for development without backend
     console.warn('WHOIS API URL not configured, using mock response');
-    await new Promise((resolve) => setTimeout(resolve, 500 + Math.random() * 1000));
+    await new Promise((resolve) => setTimeout(resolve, 100 + Math.random() * 200));
+    const available = Math.random() > 0.5; // 50% chance of being available
     return {
       domain,
-      available: Math.random() > 0.7, // 30% chance of being available
+      available,
+      premium: !available && Math.random() > 0.8, // 20% of taken are premium
+      aftermarket: !available && Math.random() > 0.9, // 10% of taken are aftermarket
     };
   }
 
@@ -27,7 +33,7 @@ export async function checkDomainAvailability(domain: string): Promise<WhoisResu
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`WHOIS API error: ${response.status} - ${errorText}`);
+      throw new Error(`Domain API error: ${response.status} - ${errorText}`);
     }
 
     const data: WhoisResult = await response.json();
@@ -41,15 +47,13 @@ export async function checkDomainAvailability(domain: string): Promise<WhoisResu
   }
 }
 
-export async function checkMultipleDomains(
-  baseName: string,
-  tlds: string[],
+// Check multiple domains with higher concurrency (Domainr API is fast)
+const CONCURRENCY = 10;
+
+export async function checkDomainsParallel(
+  domains: string[],
   onResult: (result: WhoisResult) => void
 ): Promise<void> {
-  // Check domains in parallel with a concurrency limit
-  const CONCURRENCY = 3;
-  const domains = tlds.map((tld) => `${baseName}.${tld}`);
-
   const queue = [...domains];
   const inProgress: Promise<void>[] = [];
 
@@ -85,4 +89,14 @@ export async function checkMultipleDomains(
       }
     }
   }
+}
+
+// Legacy function for compatibility
+export async function checkMultipleDomains(
+  baseName: string,
+  tlds: string[],
+  onResult: (result: WhoisResult) => void
+): Promise<void> {
+  const domains = tlds.map((tld) => `${baseName}.${tld}`);
+  return checkDomainsParallel(domains, onResult);
 }

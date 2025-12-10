@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
@@ -13,6 +13,9 @@ const DotLottiePlayer = dynamic(
   { ssr: false }
 );
 
+const TARGET_AVAILABLE = 15;
+const MAX_BATCHES = 5; // Safety limit: max 5 batches (75 names)
+
 export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [domains, setDomains] = useState<DomainResult[]>([]);
@@ -20,6 +23,9 @@ export default function Home() {
   const [hasGenerated, setHasGenerated] = useState(false);
   const [primaryDomain, setPrimaryDomain] = useState<string | null>(null);
   const [lastPrompt, setLastPrompt] = useState<string>('');
+
+  // Use ref to track available count across async updates
+  const availableCountRef = useRef(0);
 
   const handleGenerate = useCallback(async (prompt: string, append: boolean = false) => {
     setIsGenerating(true);
@@ -31,52 +37,82 @@ export default function Home() {
       setLastPrompt(prompt);
       setDomains([]);
       setPrimaryDomain(null);
+      availableCountRef.current = 0;
     }
 
     // Use stored prompt when appending, otherwise use provided prompt
     const activePrompt = append ? lastPrompt : prompt;
 
     try {
-      // Generate domain names using Gemini
-      const generatedNames = await generateDomainNames(15, activePrompt);
+      let batchCount = 0;
+      let primarySet = append; // Skip setting primary if appending
 
-      if ((isFirstGeneration || !append) && generatedNames.length > 0) {
-        setPrimaryDomain(`${generatedNames[0]}.com`);
-      }
+      // Keep generating until we have enough available domains
+      while (availableCountRef.current < TARGET_AVAILABLE && batchCount < MAX_BATCHES) {
+        batchCount++;
 
-      // Create domain entries for each name + TLD combination
-      const newDomains: DomainResult[] = [];
-      for (const name of generatedNames) {
-        for (const tld of selectedTlds) {
-          newDomains.push({
-            domain: `${name}.${tld}`,
-            available: null, // Loading state
-          });
+        // Generate domain names using Gemini
+        const generatedNames = await generateDomainNames(15, activePrompt);
+
+        if (!primarySet && generatedNames.length > 0) {
+          setPrimaryDomain(`${generatedNames[0]}.com`);
+          primarySet = true;
         }
-      }
 
-      // Append new domains to existing ones
-      setDomains((prev) => [...prev, ...newDomains]);
+        // Create domain entries for each name + TLD combination
+        const newDomains: DomainResult[] = [];
+        for (const name of generatedNames) {
+          for (const tld of selectedTlds) {
+            newDomains.push({
+              domain: `${name}.${tld}`,
+              available: null, // Loading state
+            });
+          }
+        }
 
-      // Check availability for each domain
-      for (const domainResult of newDomains) {
-        try {
-          const result = await checkDomainAvailability(domainResult.domain);
-          setDomains((prev) =>
-            prev.map((d) =>
-              d.domain === result.domain
-                ? { ...d, available: result.available, error: result.error }
-                : d
-            )
-          );
-        } catch (error) {
-          setDomains((prev) =>
-            prev.map((d) =>
-              d.domain === domainResult.domain
-                ? { ...d, available: false, error: 'Check failed' }
-                : d
-            )
-          );
+        // Append new domains to existing ones
+        setDomains((prev) => [...prev, ...newDomains]);
+
+        // Check availability for each domain (with parallel processing)
+        const checkPromises = newDomains.map(async (domainResult) => {
+          try {
+            const result = await checkDomainAvailability(domainResult.domain);
+
+            // Update available count
+            if (result.available) {
+              availableCountRef.current++;
+            }
+
+            setDomains((prev) =>
+              prev.map((d) =>
+                d.domain === result.domain
+                  ? {
+                      ...d,
+                      available: result.available,
+                      premium: result.premium,
+                      aftermarket: result.aftermarket,
+                      error: result.error
+                    }
+                  : d
+              )
+            );
+          } catch (error) {
+            setDomains((prev) =>
+              prev.map((d) =>
+                d.domain === domainResult.domain
+                  ? { ...d, available: false, error: 'Check failed' }
+                  : d
+              )
+            );
+          }
+        });
+
+        // Wait for all checks in this batch to complete
+        await Promise.all(checkPromises);
+
+        // If we have enough available, stop generating
+        if (availableCountRef.current >= TARGET_AVAILABLE) {
+          break;
         }
       }
     } catch (error) {
@@ -100,6 +136,10 @@ export default function Home() {
       return;
     }
 
+    // Clear previous results for search mode
+    setDomains([]);
+    availableCountRef.current = 0;
+
     if (isFirstSearch) {
       setPrimaryDomain(`${cleanName}.${selectedTlds[0] || 'com'}`);
     }
@@ -110,17 +150,28 @@ export default function Home() {
       available: null,
     }));
 
-    // Append new domains
-    setDomains((prev) => [...prev, ...newDomains]);
+    // Set domains
+    setDomains(newDomains);
 
-    // Check availability for each domain
-    for (const domainResult of newDomains) {
+    // Check availability for each domain in parallel
+    const checkPromises = newDomains.map(async (domainResult) => {
       try {
         const result = await checkDomainAvailability(domainResult.domain);
+
+        if (result.available) {
+          availableCountRef.current++;
+        }
+
         setDomains((prev) =>
           prev.map((d) =>
             d.domain === result.domain
-              ? { ...d, available: result.available, error: result.error }
+              ? {
+                  ...d,
+                  available: result.available,
+                  premium: result.premium,
+                  aftermarket: result.aftermarket,
+                  error: result.error
+                }
               : d
           )
         );
@@ -133,10 +184,14 @@ export default function Home() {
           )
         );
       }
-    }
+    });
 
+    await Promise.all(checkPromises);
     setIsGenerating(false);
   }, [selectedTlds, hasGenerated]);
+
+  // Count available domains for display
+  const availableCount = domains.filter(d => d.available === true).length;
 
   return (
     <div className="min-h-screen bg-black">
@@ -189,8 +244,18 @@ export default function Home() {
             </div>
           )}
 
+          {/* Progress indicator while generating */}
+          {isGenerating && domains.length > 0 && (
+            <div className="text-center py-4">
+              <div className="inline-flex items-center gap-3 text-zinc-400">
+                <div className="w-4 h-4 border-2 border-mauve border-t-transparent rounded-full animate-spin" />
+                <span>Finding available domains... ({availableCount}/{TARGET_AVAILABLE})</span>
+              </div>
+            </div>
+          )}
+
           {/* Primary domain display */}
-          {primaryDomain && (
+          {primaryDomain && !isGenerating && (
             <div className="max-w-6xl mx-auto px-4 mb-8">
               <h2 className="text-4xl md:text-5xl font-bold text-green-500 mb-4">
                 {primaryDomain}

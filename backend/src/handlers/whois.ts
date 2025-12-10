@@ -1,97 +1,37 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import * as net from 'net';
 
-// WHOIS servers for different TLDs
-const WHOIS_SERVERS: Record<string, string> = {
-  com: 'whois.verisign-grs.com',
-  net: 'whois.verisign-grs.com',
-  org: 'whois.pir.org',
-  io: 'whois.nic.io',
-  ai: 'whois.nic.ai',
-  dev: 'whois.nic.google',
-  app: 'whois.nic.google',
-  co: 'whois.nic.co',
-  xyz: 'whois.nic.xyz',
-  tech: 'whois.nic.tech',
-};
+interface DomainrStatusResponse {
+  status: Array<{
+    domain: string;
+    zone: string;
+    status: string;
+    summary?: string;
+  }>;
+}
 
-interface WhoisResult {
+interface DomainResult {
   domain: string;
   available: boolean;
-  raw?: string;
+  premium?: boolean;
+  aftermarket?: boolean;
+  status?: string;
   error?: string;
 }
 
-async function queryWhois(domain: string, server: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const socket = new net.Socket();
-    let data = '';
+// Parse Domainr status string into our format
+function parseStatus(statusString: string): { available: boolean; premium: boolean; aftermarket: boolean } {
+  const statuses = statusString.split(' ');
 
-    socket.setTimeout(10000);
+  // Check for availability - 'inactive' or 'undelegated' means available
+  const available = statuses.includes('inactive') || statuses.includes('undelegated');
 
-    socket.connect(43, server, () => {
-      socket.write(`${domain}\r\n`);
-    });
+  // Check for premium pricing
+  const premium = statuses.includes('premium');
 
-    socket.on('data', (chunk) => {
-      data += chunk.toString();
-    });
+  // Check for aftermarket/for sale
+  const aftermarket = statuses.includes('priced') || statuses.includes('marketed');
 
-    socket.on('end', () => {
-      resolve(data);
-    });
-
-    socket.on('timeout', () => {
-      socket.destroy();
-      reject(new Error('WHOIS query timed out'));
-    });
-
-    socket.on('error', (err) => {
-      reject(err);
-    });
-  });
-}
-
-function parseAvailability(whoisResponse: string, tld: string): boolean {
-  const response = whoisResponse.toLowerCase();
-
-  // Common patterns indicating domain is NOT registered (i.e., available)
-  const availablePatterns = [
-    'no match for',
-    'not found',
-    'no data found',
-    'no entries found',
-    'domain not found',
-    'status: free',
-    'status: available',
-    'no object found',
-    'object does not exist',
-  ];
-
-  // Check if any available pattern matches
-  for (const pattern of availablePatterns) {
-    if (response.includes(pattern)) {
-      return true;
-    }
-  }
-
-  // If we got a response with registration info, it's taken
-  const takenPatterns = [
-    'domain name:',
-    'registrar:',
-    'creation date:',
-    'registry domain id:',
-    'updated date:',
-  ];
-
-  for (const pattern of takenPatterns) {
-    if (response.includes(pattern)) {
-      return false;
-    }
-  }
-
-  // Default to unavailable if we can't determine
-  return false;
+  return { available, premium, aftermarket };
 }
 
 export const handler = async (
@@ -133,26 +73,47 @@ export const handler = async (
     };
   }
 
-  // Extract TLD
-  const parts = domain.split('.');
-  const tld = parts[parts.length - 1].toLowerCase();
-  const whoisServer = WHOIS_SERVERS[tld];
+  const rapidApiKey = process.env.RAPIDAPI_KEY;
 
-  if (!whoisServer) {
+  if (!rapidApiKey) {
     return {
-      statusCode: 400,
+      statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({ error: `Unsupported TLD: .${tld}` }),
+      body: JSON.stringify({ error: 'RAPIDAPI_KEY not configured' }),
     };
   }
 
   try {
-    const whoisResponse = await queryWhois(domain, whoisServer);
-    const available = parseAvailability(whoisResponse, tld);
+    const response = await fetch(
+      `https://domainr.p.rapidapi.com/v2/status?domain=${encodeURIComponent(domain)}`,
+      {
+        method: 'GET',
+        headers: {
+          'X-RapidAPI-Key': rapidApiKey,
+          'X-RapidAPI-Host': 'domainr.p.rapidapi.com',
+        },
+      }
+    );
 
-    const result: WhoisResult = {
-      domain,
+    if (!response.ok) {
+      throw new Error(`Domainr API error: ${response.status}`);
+    }
+
+    const data: DomainrStatusResponse = await response.json();
+
+    if (!data.status || data.status.length === 0) {
+      throw new Error('No status returned from Domainr');
+    }
+
+    const domainStatus = data.status[0];
+    const { available, premium, aftermarket } = parseStatus(domainStatus.status);
+
+    const result: DomainResult = {
+      domain: domainStatus.domain,
       available,
+      premium,
+      aftermarket,
+      status: domainStatus.status,
     };
 
     return {
@@ -169,7 +130,7 @@ export const handler = async (
       body: JSON.stringify({
         domain,
         available: false,
-        error: `WHOIS lookup failed: ${errorMessage}`,
+        error: `Domain lookup failed: ${errorMessage}`,
       }),
     };
   }
