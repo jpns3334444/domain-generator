@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Domain Generator WHOIS Lookup API
+
+Parameters:
+  StageName:
+    Type: String
+    Default: prod
+    Description: API Gateway stage name
+
+Resources:
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: domain-generator-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # Lambda Function
+  WhoisLookupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: domain-generator-whois
+      Runtime: nodejs20.x
+      Handler: handlers/whois.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          // Placeholder - deploy actual code via S3 or inline
+          exports.handler = async () => ({ statusCode: 200, body: 'Placeholder' });
+      Timeout: 15
+      MemorySize: 128
+
+  # API Gateway REST API
+  WhoisApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: domain-generator-api
+      Description: WHOIS lookup API for domain generator
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # API Gateway Resource (/whois)
+  WhoisResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ParentId: !GetAtt WhoisApi.RootResourceId
+      PathPart: whois
+
+  # API Gateway Method (GET /whois)
+  WhoisGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref WhoisResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WhoisLookupFunction.Arn}/invocations
+
+  # API Gateway Method (OPTIONS /whois) for CORS
+  WhoisOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref WhoisResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # Lambda Permission for API Gateway
+  LambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WhoisLookupFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WhoisApi}/*/*/*
+
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - WhoisGetMethod
+      - WhoisOptionsMethod
+    Properties:
+      RestApiId: !Ref WhoisApi
+
+  # API Gateway Stage
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref WhoisApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: !Ref StageName
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${WhoisApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/whois
+    Export:
+      Name: DomainGeneratorApiEndpoint
+
+  LambdaFunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt WhoisLookupFunction.Arn
