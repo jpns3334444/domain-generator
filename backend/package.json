@@ -8,7 +8,9 @@
     "package": "npm run build && cd dist && zip -r ../function.zip .",
     "deploy": "aws cloudformation deploy --template-file cloudformation.yaml --stack-name domain-generator-api --capabilities CAPABILITY_IAM"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.700.0"
+  },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
     "@types/node": "^20.10.0",

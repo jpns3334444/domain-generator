@@ -14,14 +14,14 @@ export default function Home() {
   const [hasGenerated, setHasGenerated] = useState(false);
   const [primaryDomain, setPrimaryDomain] = useState<string | null>(null);
 
-  const handleGenerate = useCallback(async () => {
+  const handleGenerate = useCallback(async (prompt: string) => {
     setIsGenerating(true);
     const isFirstGeneration = !hasGenerated;
     setHasGenerated(true);
 
     try {
       // Generate domain names using Gemini
-      const generatedNames = await generateDomainNames(15);
+      const generatedNames = await generateDomainNames(15, prompt);
 
       if (isFirstGeneration && generatedNames.length > 0) {
         setPrimaryDomain(`${generatedNames[0]}.com`);
@@ -68,7 +68,58 @@ export default function Home() {
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedTlds]);
+  }, [selectedTlds, hasGenerated]);
+
+  const handleSearch = useCallback(async (baseName: string) => {
+    setIsGenerating(true);
+    const isFirstSearch = !hasGenerated;
+    setHasGenerated(true);
+
+    // Clean the base name (remove any TLD if user included it)
+    const cleanName = baseName.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    if (!cleanName) {
+      setIsGenerating(false);
+      return;
+    }
+
+    if (isFirstSearch) {
+      setPrimaryDomain(`${cleanName}.${selectedTlds[0] || 'com'}`);
+    }
+
+    // Create domain entries for each selected TLD
+    const newDomains: DomainResult[] = selectedTlds.map((tld) => ({
+      domain: `${cleanName}.${tld}`,
+      available: null,
+    }));
+
+    // Append new domains
+    setDomains((prev) => [...prev, ...newDomains]);
+
+    // Check availability for each domain
+    for (const domainResult of newDomains) {
+      try {
+        const result = await checkDomainAvailability(domainResult.domain);
+        setDomains((prev) =>
+          prev.map((d) =>
+            d.domain === result.domain
+              ? { ...d, available: result.available, error: result.error }
+              : d
+          )
+        );
+      } catch (error) {
+        setDomains((prev) =>
+          prev.map((d) =>
+            d.domain === domainResult.domain
+              ? { ...d, available: false, error: 'Check failed' }
+              : d
+          )
+        );
+      }
+    }
+
+    setIsGenerating(false);
+  }, [selectedTlds, hasGenerated]);
 
   return (
     <div className="min-h-screen bg-black">
@@ -88,6 +139,7 @@ export default function Home() {
 
         <SearchBar
           onGenerate={handleGenerate}
+          onSearch={handleSearch}
           isGenerating={isGenerating}
           compact={hasGenerated}
         />
@@ -148,7 +200,7 @@ export default function Home() {
           {domains.length > 0 && !isGenerating && (
             <div className="text-center mt-12">
               <button
-                onClick={handleGenerate}
+                onClick={() => handleGenerate('')}
                 className="bg-zinc-800 hover:bg-zinc-700 text-white px-8 py-3 rounded-lg font-medium transition-colors"
               >
                 Load More

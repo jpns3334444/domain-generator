@@ -23,9 +23,26 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { count = 20 } = await request.json();
+    const { count = 20, prompt: userPrompt = '' } = await request.json();
 
-    const prompt = `Generate ${count} unique, creative, and memorable domain names (without the TLD extension).
+    let prompt: string;
+
+    if (userPrompt.trim()) {
+      // User provided a theme/prompt
+      prompt = `Generate ${count} unique, creative, and memorable domain names (without the TLD extension) for a business related to: "${userPrompt}"
+
+Requirements:
+- Names should be short (4-12 characters)
+- Names should be relevant to or evoke the theme: "${userPrompt}"
+- Mix of made-up words, combinations, and creative spellings
+- Should be easy to type and remember
+- No hyphens or numbers
+- All lowercase
+
+Return ONLY the domain names, one per line, with no explanations, numbering, or other text.`;
+    } else {
+      // Random generation
+      prompt = `Generate ${count} unique, creative, and memorable domain names (without the TLD extension).
 
 Requirements:
 - Names should be short (4-12 characters)
@@ -36,6 +53,7 @@ Requirements:
 - All lowercase
 
 Return ONLY the domain names, one per line, with no explanations, numbering, or other text.`;
+    }
 
     const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
       method: 'POST',

@@ -1,10 +1,10 @@
-export async function generateDomainNames(count: number = 20): Promise<string[]> {
+export async function generateDomainNames(count: number = 20, prompt: string = ''): Promise<string[]> {
   const response = await fetch('/api/generate', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ count }),
+    body: JSON.stringify({ count, prompt }),
   });
 
   if (!response.ok) {
