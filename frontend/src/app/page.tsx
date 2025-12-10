@@ -10,7 +10,18 @@ import { checkDomainAvailability } from '@/lib/whois';
 
 const DotLottiePlayer = dynamic(
   () => import('@dotlottie/react-player').then((mod) => mod.DotLottiePlayer),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => (
+      <img
+        src="/animation-placeholder.png"
+        alt=""
+        width={600}
+        height={450}
+        className="w-full h-full object-contain"
+      />
+    )
+  }
 );
 
 const TARGET_AVAILABLE = 15;
