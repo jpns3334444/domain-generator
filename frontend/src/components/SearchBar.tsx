@@ -20,12 +20,12 @@ const PAUSE_BEFORE_TYPE = 300;
 export default function SearchBar({ onGenerate, onSearch, isGenerating, compact = false }: SearchBarProps) {
   const [mode, setMode] = useState<Mode>('generate');
   const [inputValue, setInputValue] = useState('');
-  const [placeholder, setPlaceholder] = useState('Random');
+  const [placeholder, setPlaceholder] = useState('');
   const [showTooltip, setShowTooltip] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const animationRef = useRef<NodeJS.Timeout | null>(null);
-  const currentPromptRef = useRef('Random');
-  const charIndexRef = useRef(6); // 'Random'.length
+  const currentPromptRef = useRef('');
+  const charIndexRef = useRef(0);
   const isDeletingRef = useRef(false);
 
   // Check localStorage for tooltip dismissal
@@ -48,12 +48,12 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
       const response = await fetch('/api/placeholder-prompts');
       if (response.ok) {
         const data = await response.json();
-        return data.prompt || 'Random';
+        return data.prompt || '';
       }
     } catch (error) {
       console.error('Failed to fetch prompt:', error);
     }
-    return 'Random';
+    return '';
   }, []);
 
   // Animation effect
