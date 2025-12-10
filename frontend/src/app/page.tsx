@@ -144,7 +144,7 @@ export default function Home() {
       <div className={`flex flex-col items-center justify-center ${hasGenerated ? 'pt-8 pb-4' : 'min-h-screen'}`}>
         {!hasGenerated && (
           <>
-            <div className="w-96 h-96 mb-2">
+            <div className="w-96 h-96 -mb-32">
               <DotLottiePlayer
                 src="/animation.lottie"
                 autoplay
