@@ -3,10 +3,10 @@
 :root {
   --background: #000000;
   --foreground: #ffffff;
-  /* Catppuccin Macchiato purple/mauve palette */
-  --mauve: #c6a0f6;
-  --mauve-hover: #b48ef4;
-  --mauve-disabled: #8e6bc4;
+  /* Custom neon purple */
+  --mauve: #c50ed2;
+  --mauve-hover: #d946ef;
+  --mauve-disabled: #9333a8;
 }
 
 @theme inline {
