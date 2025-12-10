@@ -93,8 +93,14 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
       }
     };
 
-    // Start with a pause before first delete cycle
-    animationRef.current = setTimeout(animate, PAUSE_BEFORE_DELETE);
+    // Fetch first prompt immediately and start typing
+    const startAnimation = async () => {
+      if (!currentPromptRef.current) {
+        currentPromptRef.current = await fetchNewPrompt();
+      }
+      animate();
+    };
+    startAnimation();
 
     return () => {
       if (animationRef.current) {
