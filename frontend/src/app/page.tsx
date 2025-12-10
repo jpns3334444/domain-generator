@@ -16,33 +16,33 @@ export default function Home() {
 
   const handleGenerate = useCallback(async () => {
     setIsGenerating(true);
-    setDomains([]);
+    const isFirstGeneration = !hasGenerated;
     setHasGenerated(true);
-    setPrimaryDomain(null);
 
     try {
       // Generate domain names using Gemini
       const generatedNames = await generateDomainNames(15);
 
-      if (generatedNames.length > 0) {
+      if (isFirstGeneration && generatedNames.length > 0) {
         setPrimaryDomain(`${generatedNames[0]}.com`);
       }
 
       // Create domain entries for each name + TLD combination
-      const allDomains: DomainResult[] = [];
+      const newDomains: DomainResult[] = [];
       for (const name of generatedNames) {
         for (const tld of selectedTlds) {
-          allDomains.push({
+          newDomains.push({
             domain: `${name}.${tld}`,
             available: null, // Loading state
           });
         }
       }
 
-      setDomains(allDomains);
+      // Append new domains to existing ones
+      setDomains((prev) => [...prev, ...newDomains]);
 
       // Check availability for each domain
-      for (const domainResult of allDomains) {
+      for (const domainResult of newDomains) {
         try {
           const result = await checkDomainAvailability(domainResult.domain);
           setDomains((prev) =>
