@@ -19,21 +19,26 @@ export default function Home() {
   const [selectedTlds, setSelectedTlds] = useState<string[]>(['com']);
   const [hasGenerated, setHasGenerated] = useState(false);
   const [primaryDomain, setPrimaryDomain] = useState<string | null>(null);
+  const [lastPrompt, setLastPrompt] = useState<string>('');
 
   const handleGenerate = useCallback(async (prompt: string, append: boolean = false) => {
     setIsGenerating(true);
     const isFirstGeneration = !hasGenerated;
     setHasGenerated(true);
 
-    // Clear existing domains if not appending (fresh generation)
+    // Store the prompt for "Load More" functionality (only on fresh generation)
     if (!append) {
+      setLastPrompt(prompt);
       setDomains([]);
       setPrimaryDomain(null);
     }
 
+    // Use stored prompt when appending, otherwise use provided prompt
+    const activePrompt = append ? lastPrompt : prompt;
+
     try {
       // Generate domain names using Gemini
-      const generatedNames = await generateDomainNames(15, prompt);
+      const generatedNames = await generateDomainNames(15, activePrompt);
 
       if ((isFirstGeneration || !append) && generatedNames.length > 0) {
         setPrimaryDomain(`${generatedNames[0]}.com`);
@@ -80,7 +85,7 @@ export default function Home() {
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedTlds, hasGenerated]);
+  }, [selectedTlds, hasGenerated, lastPrompt]);
 
   const handleSearch = useCallback(async (baseName: string) => {
     setIsGenerating(true);
