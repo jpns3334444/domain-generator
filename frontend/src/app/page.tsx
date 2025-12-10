@@ -134,11 +134,11 @@ export default function Home() {
         {!hasGenerated && (
           <>
             <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 text-center">
-              Domain name search
+              Generate Domain Names
             </h1>
             <p className="text-zinc-400 text-lg md:text-xl text-center max-w-2xl mb-12 px-4">
-              The fastest domain search tool on the internet. Generate random domain names
-              with AI and check availability instantly.
+              Create unique domain names with AI. Describe your business or generate random names,
+              then instantly check availability.
             </p>
           </>
         )}
