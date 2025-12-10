@@ -153,7 +153,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             onFocus={handleInputFocus}
             onKeyDown={handleKeyDown}
             placeholder={mode === 'generate' ? placeholder : 'Enter domain name...'}
-            className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none py-2 caret-mauve"
+            className="flex-1 bg-transparent text-white text-lg placeholder-zinc-300 outline-none py-2 caret-mauve"
             autoComplete="off"
             spellCheck={false}
           />

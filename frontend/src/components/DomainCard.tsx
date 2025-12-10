@@ -14,7 +14,7 @@ export default function DomainCard({ domain, available, premium, aftermarket, er
   const statusColor = available === null
     ? 'bg-zinc-600' // Loading
     : available
-      ? 'bg-green-500' // Available
+      ? 'bg-mauve' // Available
       : premium || aftermarket
         ? 'bg-amber-500' // Premium/Aftermarket
         : 'bg-zinc-500'; // Taken
@@ -31,7 +31,7 @@ export default function DomainCard({ domain, available, premium, aftermarket, er
   const getButtonStyle = () => {
     if (available === null) return 'bg-zinc-700 text-zinc-400 cursor-wait';
     if (error) return 'bg-red-600/50 text-red-200 cursor-not-allowed';
-    if (available) return 'bg-green-600 hover:bg-green-700 text-white cursor-pointer';
+    if (available) return 'bg-mauve hover:bg-mauve-hover text-zinc-900 cursor-pointer';
     if (premium || aftermarket) return 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer';
     return 'bg-zinc-700 text-zinc-400 cursor-default';
   };

@@ -39,7 +39,7 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
         <h3 className="text-sm font-medium text-zinc-400">
           Available domains
           {availableCount > 0 && (
-            <span className="text-green-500 ml-2">({availableCount} found)</span>
+            <span className="text-mauve ml-2">({availableCount} found)</span>
           )}
         </h3>
       </div>
