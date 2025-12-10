@@ -17,10 +17,6 @@ Parameters:
     Type: String
     Description: Gemini API key for generating prompts
     NoEcho: true
-  RapidApiKey:
-    Type: String
-    Description: RapidAPI key for Domainr API
-    NoEcho: true
 
 Resources:
   # DynamoDB Table for storing example prompts
@@ -63,7 +59,7 @@ Resources:
                   - dynamodb:DescribeTable
                 Resource: !GetAtt PromptsTable.Arn
 
-  # Lambda Function - Domain Lookup (Domainr API)
+  # Lambda Function - Domain Lookup (DNS + RDAP)
   WhoisLookupFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -76,9 +72,6 @@ Resources:
         S3Key: !Ref S3Key
       Timeout: 15
       MemorySize: 128
-      Environment:
-        Variables:
-          RAPIDAPI_KEY: !Ref RapidApiKey
 
   # Lambda Function - Prompts
   PromptsFunction:

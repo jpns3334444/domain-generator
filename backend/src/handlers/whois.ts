@@ -1,37 +1,120 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import * as dns from 'dns';
+import { promisify } from 'util';
 
-interface DomainrStatusResponse {
-  status: Array<{
-    domain: string;
-    zone: string;
-    status: string;
-    summary?: string;
-  }>;
-}
+const resolveNs = promisify(dns.resolveNs);
+
+// RDAP servers for different TLDs
+const RDAP_SERVERS: Record<string, string> = {
+  com: 'https://rdap.verisign.com/com/v1/domain/',
+  net: 'https://rdap.verisign.com/net/v1/domain/',
+  org: 'https://rdap.publicinterestregistry.org/rdap/domain/',
+  io: 'https://rdap.nic.io/domain/',
+  ai: 'https://rdap.nic.ai/domain/',
+  dev: 'https://rdap.nic.google/domain/',
+  app: 'https://rdap.nic.google/domain/',
+  co: 'https://rdap.nic.co/domain/',
+  xyz: 'https://rdap.nic.xyz/domain/',
+  tech: 'https://rdap.nic.tech/domain/',
+};
 
 interface DomainResult {
   domain: string;
   available: boolean;
   premium?: boolean;
   aftermarket?: boolean;
-  status?: string;
   error?: string;
 }
 
-// Parse Domainr status string into our format
-function parseStatus(statusString: string): { available: boolean; premium: boolean; aftermarket: boolean } {
-  const statuses = statusString.split(' ');
+// Fast DNS check - if no NS records, domain is likely available
+async function checkDns(domain: string): Promise<'available' | 'taken' | 'unknown'> {
+  try {
+    await resolveNs(domain);
+    // Has NS records = definitely taken
+    return 'taken';
+  } catch (error: unknown) {
+    const err = error as { code?: string };
+    if (err.code === 'ENOTFOUND' || err.code === 'ENODATA') {
+      // No NS records - might be available, need to confirm with RDAP
+      return 'unknown';
+    }
+    // Other errors (timeout, etc) - treat as unknown
+    return 'unknown';
+  }
+}
 
-  // Check for availability - 'inactive' or 'undelegated' means available
-  const available = statuses.includes('inactive') || statuses.includes('undelegated');
+// RDAP check for confirmation
+async function checkRdap(domain: string, tld: string): Promise<DomainResult> {
+  const rdapServer = RDAP_SERVERS[tld];
 
-  // Check for premium pricing
-  const premium = statuses.includes('premium');
+  if (!rdapServer) {
+    // Fallback: if no RDAP server, rely on DNS result
+    return {
+      domain,
+      available: false,
+      error: 'RDAP not supported for this TLD',
+    };
+  }
 
-  // Check for aftermarket/for sale
-  const aftermarket = statuses.includes('priced') || statuses.includes('marketed');
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-  return { available, premium, aftermarket };
+    const response = await fetch(`${rdapServer}${domain}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/rdap+json',
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.status === 404) {
+      // 404 = domain not found = available
+      return {
+        domain,
+        available: true,
+      };
+    }
+
+    if (response.ok) {
+      // Domain exists in registry
+      const data = await response.json() as { status?: string[] };
+
+      // Check for premium/reserved status
+      const status = data.status || [];
+      const isPremium = status.some((s: string) =>
+        s.includes('premium') || s.includes('reserved')
+      );
+
+      return {
+        domain,
+        available: false,
+        premium: isPremium,
+      };
+    }
+
+    // Other status codes - treat as taken (conservative)
+    return {
+      domain,
+      available: false,
+    };
+  } catch (error: unknown) {
+    const err = error as { name?: string; message?: string };
+    if (err.name === 'AbortError') {
+      return {
+        domain,
+        available: false,
+        error: 'RDAP timeout',
+      };
+    }
+    return {
+      domain,
+      available: false,
+      error: `RDAP error: ${err.message}`,
+    };
+  }
 }
 
 export const handler = async (
@@ -73,53 +156,33 @@ export const handler = async (
     };
   }
 
-  const rapidApiKey = process.env.RAPIDAPI_KEY;
-
-  if (!rapidApiKey) {
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({ error: 'RAPIDAPI_KEY not configured' }),
-    };
-  }
+  // Extract TLD
+  const parts = domain.split('.');
+  const tld = parts[parts.length - 1].toLowerCase();
 
   try {
-    const response = await fetch(
-      `https://domainr.p.rapidapi.com/v2/status?domain=${encodeURIComponent(domain)}`,
-      {
-        method: 'GET',
-        headers: {
-          'X-RapidAPI-Key': rapidApiKey,
-          'X-RapidAPI-Host': 'domainr.p.rapidapi.com',
-        },
-      }
-    );
+    // Step 1: Fast DNS check
+    const dnsResult = await checkDns(domain);
 
-    if (!response.ok) {
-      throw new Error(`Domainr API error: ${response.status}`);
+    if (dnsResult === 'taken') {
+      // DNS confirms it's taken - no need for RDAP
+      return {
+        statusCode: 200,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          domain,
+          available: false,
+        }),
+      };
     }
 
-    const data: DomainrStatusResponse = await response.json();
-
-    if (!data.status || data.status.length === 0) {
-      throw new Error('No status returned from Domainr');
-    }
-
-    const domainStatus = data.status[0];
-    const { available, premium, aftermarket } = parseStatus(domainStatus.status);
-
-    const result: DomainResult = {
-      domain: domainStatus.domain,
-      available,
-      premium,
-      aftermarket,
-      status: domainStatus.status,
-    };
+    // Step 2: DNS says unknown/maybe available - confirm with RDAP
+    const rdapResult = await checkRdap(domain, tld);
 
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: JSON.stringify(result),
+      body: JSON.stringify(rdapResult),
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
