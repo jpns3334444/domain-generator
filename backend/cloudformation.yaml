@@ -6,6 +6,13 @@ Parameters:
     Type: String
     Default: prod
     Description: API Gateway stage name
+  S3Bucket:
+    Type: String
+    Description: S3 bucket containing Lambda code
+  S3Key:
+    Type: String
+    Default: function.zip
+    Description: S3 key for Lambda code zip file
 
 Resources:
   # IAM Role for Lambda
@@ -32,9 +39,8 @@ Resources:
       Handler: handlers/whois.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        ZipFile: |
-          // Placeholder - deploy actual code via S3 or inline
-          exports.handler = async () => ({ statusCode: 200, body: 'Placeholder' });
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3Key
       Timeout: 15
       MemorySize: 128
 
