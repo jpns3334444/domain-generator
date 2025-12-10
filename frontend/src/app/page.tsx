@@ -1,11 +1,17 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
 import DomainList, { DomainResult } from '@/components/DomainList';
 import { generateDomainNames } from '@/lib/gemini';
 import { checkDomainAvailability } from '@/lib/whois';
+
+const DotLottiePlayer = dynamic(
+  () => import('@dotlottie/react-player').then((mod) => mod.DotLottiePlayer),
+  { ssr: false }
+);
 
 export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -133,6 +139,13 @@ export default function Home() {
       <div className={`flex flex-col items-center justify-center ${hasGenerated ? 'pt-8 pb-4' : 'min-h-screen'}`}>
         {!hasGenerated && (
           <>
+            <div className="w-48 h-48 mb-6">
+              <DotLottiePlayer
+                src="/animation.lottie"
+                autoplay
+                loop
+              />
+            </div>
             <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 text-center">
               Generate Domain Names
             </h1>
