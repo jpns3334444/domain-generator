@@ -14,16 +14,22 @@ export default function Home() {
   const [hasGenerated, setHasGenerated] = useState(false);
   const [primaryDomain, setPrimaryDomain] = useState<string | null>(null);
 
-  const handleGenerate = useCallback(async (prompt: string) => {
+  const handleGenerate = useCallback(async (prompt: string, append: boolean = false) => {
     setIsGenerating(true);
     const isFirstGeneration = !hasGenerated;
     setHasGenerated(true);
+
+    // Clear existing domains if not appending (fresh generation)
+    if (!append) {
+      setDomains([]);
+      setPrimaryDomain(null);
+    }
 
     try {
       // Generate domain names using Gemini
       const generatedNames = await generateDomainNames(15, prompt);
 
-      if (isFirstGeneration && generatedNames.length > 0) {
+      if ((isFirstGeneration || !append) && generatedNames.length > 0) {
         setPrimaryDomain(`${generatedNames[0]}.com`);
       }
 
@@ -200,7 +206,7 @@ export default function Home() {
           {domains.length > 0 && !isGenerating && (
             <div className="text-center mt-12">
               <button
-                onClick={() => handleGenerate('')}
+                onClick={() => handleGenerate('', true)}
                 className="bg-zinc-800 hover:bg-zinc-700 text-white px-8 py-3 rounded-lg font-medium transition-colors"
               >
                 Load More

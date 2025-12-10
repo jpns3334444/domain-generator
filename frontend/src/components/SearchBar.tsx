@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Sparkles, Search } from 'lucide-react';
 
 interface SearchBarProps {
@@ -13,16 +13,20 @@ interface SearchBarProps {
 type Mode = 'generate' | 'search';
 
 const TYPING_SPEED = 50;
-const DELETING_SPEED = 30;
-const PAUSE_BEFORE_DELETE = 5000;
-const PAUSE_BEFORE_TYPE = 500;
+const DELETING_SPEED = 80; // Slower deletion
+const PAUSE_BEFORE_DELETE = 3000; // 3 seconds
+const PAUSE_BEFORE_TYPE = 300;
 
 export default function SearchBar({ onGenerate, onSearch, isGenerating, compact = false }: SearchBarProps) {
   const [mode, setMode] = useState<Mode>('generate');
   const [inputValue, setInputValue] = useState('');
   const [placeholder, setPlaceholder] = useState('Random');
   const [showTooltip, setShowTooltip] = useState(true);
-  const [isTypingPlaceholder, setIsTypingPlaceholder] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const animationRef = useRef<NodeJS.Timeout | null>(null);
+  const currentPromptRef = useRef('Random');
+  const charIndexRef = useRef(6); // 'Random'.length
+  const isDeletingRef = useRef(false);
 
   // Check localStorage for tooltip dismissal
   useEffect(() => {
@@ -38,74 +42,67 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
     localStorage.setItem('tooltip-dismissed', 'true');
   }, []);
 
-  // Fetch and animate placeholder
-  useEffect(() => {
-    if (mode !== 'generate' || inputValue) return;
-
-    let timeoutId: NodeJS.Timeout;
-    let currentPrompt = 'Random';
-    let charIndex = currentPrompt.length;
-    let isDeleting = false;
-    let isPaused = false;
-
-    const fetchNewPrompt = async (): Promise<string> => {
-      try {
-        const response = await fetch('/api/placeholder-prompts');
-        if (response.ok) {
-          const data = await response.json();
-          return data.prompt || 'Random';
-        }
-      } catch (error) {
-        console.error('Failed to fetch prompt:', error);
+  // Fetch new prompt from API
+  const fetchNewPrompt = useCallback(async (): Promise<string> => {
+    try {
+      const response = await fetch('/api/placeholder-prompts');
+      if (response.ok) {
+        const data = await response.json();
+        return data.prompt || 'Random';
       }
-      return 'Random';
-    };
+    } catch (error) {
+      console.error('Failed to fetch prompt:', error);
+    }
+    return 'Random';
+  }, []);
+
+  // Animation effect
+  useEffect(() => {
+    // Don't animate if user is typing or not in generate mode
+    if (mode !== 'generate' || inputValue) {
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
+      }
+      return;
+    }
 
     const animate = async () => {
-      if (isPaused) {
-        isPaused = false;
-        if (isDeleting) {
-          timeoutId = setTimeout(animate, PAUSE_BEFORE_TYPE);
+      if (isDeletingRef.current) {
+        if (charIndexRef.current > 0) {
+          charIndexRef.current--;
+          setPlaceholder(currentPromptRef.current.slice(0, charIndexRef.current));
+          animationRef.current = setTimeout(animate, DELETING_SPEED);
         } else {
-          timeoutId = setTimeout(animate, PAUSE_BEFORE_DELETE);
-        }
-        return;
-      }
-
-      if (isDeleting) {
-        if (charIndex > 0) {
-          charIndex--;
-          setPlaceholder(currentPrompt.slice(0, charIndex));
-          timeoutId = setTimeout(animate, DELETING_SPEED);
-        } else {
-          // Done deleting, fetch new prompt and start typing
-          isDeleting = false;
-          setIsTypingPlaceholder(true);
-          currentPrompt = await fetchNewPrompt();
-          charIndex = 0;
-          isPaused = true;
-          timeoutId = setTimeout(animate, PAUSE_BEFORE_TYPE);
+          // Done deleting, fetch new prompt
+          isDeletingRef.current = false;
+          currentPromptRef.current = await fetchNewPrompt();
+          charIndexRef.current = 0;
+          animationRef.current = setTimeout(animate, PAUSE_BEFORE_TYPE);
         }
       } else {
-        if (charIndex < currentPrompt.length) {
-          charIndex++;
-          setPlaceholder(currentPrompt.slice(0, charIndex));
-          timeoutId = setTimeout(animate, TYPING_SPEED);
+        if (charIndexRef.current < currentPromptRef.current.length) {
+          charIndexRef.current++;
+          setPlaceholder(currentPromptRef.current.slice(0, charIndexRef.current));
+          animationRef.current = setTimeout(animate, TYPING_SPEED);
         } else {
-          // Done typing, pause then delete
-          setIsTypingPlaceholder(false);
-          isDeleting = true;
-          isPaused = true;
-          timeoutId = setTimeout(animate, PAUSE_BEFORE_DELETE);
+          // Done typing, pause then start deleting
+          isDeletingRef.current = true;
+          animationRef.current = setTimeout(animate, PAUSE_BEFORE_DELETE);
         }
       }
     };
 
-    // Start animation after initial pause
-    timeoutId = setTimeout(animate, PAUSE_BEFORE_DELETE);
+    // Start with a pause before first delete cycle
+    animationRef.current = setTimeout(animate, PAUSE_BEFORE_DELETE);
 
-    return () => clearTimeout(timeoutId);
-  }, [mode, inputValue]);
+    return () => {
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+  }, [mode, inputValue, fetchNewPrompt]);
 
   const handleSubmit = () => {
     dismissTooltip();
@@ -128,19 +125,31 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
     }
   };
 
+  // Maintain focus when mode changes
+  const handleModeChange = (newMode: Mode) => {
+    setMode(newMode);
+    // Keep focus on input
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 0);
+  };
+
   return (
     <div className={`w-full max-w-2xl mx-auto ${compact ? '' : 'px-4'}`}>
       <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
         {/* Search Input */}
         <div className="flex items-center gap-4 mb-4">
           <input
+            ref={inputRef}
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onFocus={handleInputFocus}
             onKeyDown={handleKeyDown}
             placeholder={mode === 'generate' ? placeholder : 'Enter domain name...'}
-            className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none py-2"
+            className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none py-2 caret-purple-500"
+            autoComplete="off"
+            spellCheck={false}
           />
         </div>
 
@@ -148,7 +157,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
             <button
-              onClick={() => setMode('generate')}
+              onClick={() => handleModeChange('generate')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 mode === 'generate'
                   ? 'bg-purple-600 text-white'
@@ -159,7 +168,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
               Generate
             </button>
             <button
-              onClick={() => setMode('search')}
+              onClick={() => handleModeChange('search')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 mode === 'search'
                   ? 'bg-purple-600 text-white'
