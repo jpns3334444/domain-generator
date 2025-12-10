@@ -182,12 +182,12 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
 
           {/* Action button with tooltip */}
           <div className="relative">
-            {/* Tooltip */}
+            {/* Tooltip - positioned to the right of the button */}
             {showTooltip && mode === 'generate' && (
-              <div className="absolute bottom-full right-0 mb-2 w-64 animate-fade-in">
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-56 animate-fade-in">
                 <div className="bg-zinc-800 text-zinc-300 text-sm p-3 rounded-lg shadow-lg border border-zinc-700">
                   <p>Click with no prompt to generate random domain names</p>
-                  <div className="absolute -bottom-2 right-6 w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-zinc-800" />
+                  <div className="absolute top-1/2 -translate-y-1/2 -left-2 w-0 h-0 border-t-8 border-b-8 border-r-8 border-t-transparent border-b-transparent border-r-zinc-800" />
                 </div>
               </div>
             )}
