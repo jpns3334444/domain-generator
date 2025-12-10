@@ -12,15 +12,21 @@ export default function Home() {
   const [domains, setDomains] = useState<DomainResult[]>([]);
   const [selectedTlds, setSelectedTlds] = useState<string[]>(['com']);
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [primaryDomain, setPrimaryDomain] = useState<string | null>(null);
 
   const handleGenerate = useCallback(async () => {
     setIsGenerating(true);
     setDomains([]);
     setHasGenerated(true);
+    setPrimaryDomain(null);
 
     try {
       // Generate domain names using Gemini
       const generatedNames = await generateDomainNames(15);
+
+      if (generatedNames.length > 0) {
+        setPrimaryDomain(`${generatedNames[0]}.com`);
+      }
 
       // Create domain entries for each name + TLD combination
       const allDomains: DomainResult[] = [];
@@ -67,7 +73,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-black">
       {/* Hero Section */}
-      <div className={`flex flex-col items-center justify-center ${hasGenerated ? 'pt-12 pb-8' : 'min-h-screen'}`}>
+      <div className={`flex flex-col items-center justify-center ${hasGenerated ? 'pt-8 pb-4' : 'min-h-screen'}`}>
         {!hasGenerated && (
           <>
             <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 text-center">
@@ -97,7 +103,7 @@ export default function Home() {
       {/* Results Section */}
       {hasGenerated && (
         <div className="pb-12">
-          {/* Subheading when generating */}
+          {/* Loading state */}
           {domains.length === 0 && isGenerating && (
             <div className="text-center py-12">
               <div className="inline-flex items-center gap-3 text-zinc-400">
@@ -107,28 +113,45 @@ export default function Home() {
             </div>
           )}
 
-          {/* Search millions tagline */}
-          {domains.length > 0 && (
-            <div className="text-center mb-8">
-              <p className="text-purple-500 text-sm uppercase tracking-wider font-medium">
-                AI-Generated Domain Names
-              </p>
-              <h2 className="text-3xl md:text-4xl font-bold text-white mt-2">
-                Found {domains.length} possibilities
+          {/* Primary domain display */}
+          {primaryDomain && (
+            <div className="max-w-6xl mx-auto px-4 mb-8">
+              <h2 className="text-4xl md:text-5xl font-bold text-green-500 mb-4">
+                {primaryDomain}
               </h2>
+              <div className="flex flex-wrap gap-2">
+                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
+                  <span>Bookmark</span>
+                </button>
+                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
+                  <span>Copy URL</span>
+                </button>
+                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
+                  <span>Pronounce</span>
+                </button>
+                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
+                  <span>Appraise</span>
+                </button>
+                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
+                  <span>See More</span>
+                </button>
+                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
+                  <span>...</span>
+                </button>
+              </div>
             </div>
           )}
 
           <DomainList domains={domains} isLoading={isGenerating} />
 
-          {/* Generate more button */}
+          {/* Load More button */}
           {domains.length > 0 && !isGenerating && (
             <div className="text-center mt-12">
               <button
                 onClick={handleGenerate}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-lg font-medium transition-colors"
+                className="bg-zinc-800 hover:bg-zinc-700 text-white px-8 py-3 rounded-lg font-medium transition-colors"
               >
-                Generate More
+                Load More
               </button>
             </div>
           )}

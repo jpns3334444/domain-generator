@@ -18,38 +18,28 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
     return null;
   }
 
-  // Group domains into columns
-  const availableDomains = domains.filter(d => d.available === true);
-  const takenDomains = domains.filter(d => d.available === false);
-  const checkingDomains = domains.filter(d => d.available === null);
+  // Split domains into three columns
+  const third = Math.ceil(domains.length / 3);
+  const leftColumn = domains.slice(0, third);
+  const middleColumn = domains.slice(third, third * 2);
+  const rightColumn = domains.slice(third * 2);
+
+  const takenCount = domains.filter(d => d.available === false).length;
 
   return (
     <div className="w-full max-w-6xl mx-auto px-4 mt-8">
-      {/* Stats bar */}
-      <div className="flex items-center gap-6 mb-6 text-sm">
-        <span className="text-zinc-400">
-          <span className="text-green-500 font-semibold">{availableDomains.length}</span> available
-        </span>
-        <span className="text-zinc-400">
-          <span className="text-blue-500 font-semibold">{takenDomains.length}</span> taken
-        </span>
-        {checkingDomains.length > 0 && (
-          <span className="text-zinc-400">
-            <span className="text-zinc-500 font-semibold">{checkingDomains.length}</span> checking...
-          </span>
-        )}
-      </div>
-
       {/* Three column layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {/* Available domains */}
+        {/* Left column */}
         <div>
-          <h3 className="text-sm font-medium text-zinc-400 mb-4 flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500" />
-            Available ({availableDomains.length})
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-zinc-400">
+              Domain extensions
+              <span className="text-zinc-600 ml-2">({takenCount} taken)</span>
+            </h3>
+          </div>
           <div className="space-y-1">
-            {availableDomains.map((domain) => (
+            {leftColumn.map((domain) => (
               <DomainCard
                 key={domain.domain}
                 domain={domain.domain}
@@ -57,20 +47,17 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
                 error={domain.error}
               />
             ))}
-            {availableDomains.length === 0 && !isLoading && (
-              <p className="text-zinc-600 text-sm">No available domains yet</p>
-            )}
           </div>
         </div>
 
-        {/* Taken domains */}
+        {/* Middle column */}
         <div>
-          <h3 className="text-sm font-medium text-zinc-400 mb-4 flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-500" />
-            Taken ({takenDomains.length})
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-zinc-400 invisible">Extensions</h3>
+            <span className="text-purple-400 text-sm cursor-pointer hover:text-purple-300">See all</span>
+          </div>
           <div className="space-y-1">
-            {takenDomains.map((domain) => (
+            {middleColumn.map((domain) => (
               <DomainCard
                 key={domain.domain}
                 domain={domain.domain}
@@ -78,20 +65,17 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
                 error={domain.error}
               />
             ))}
-            {takenDomains.length === 0 && !isLoading && (
-              <p className="text-zinc-600 text-sm">No taken domains yet</p>
-            )}
           </div>
         </div>
 
-        {/* Checking domains */}
+        {/* Right column - Premium domains */}
         <div>
-          <h3 className="text-sm font-medium text-zinc-400 mb-4 flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-zinc-500 animate-pulse" />
-            Checking ({checkingDomains.length})
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-zinc-400">Premium domains</h3>
+            <span className="text-purple-400 text-sm cursor-pointer hover:text-purple-300">See all</span>
+          </div>
           <div className="space-y-1">
-            {checkingDomains.map((domain) => (
+            {rightColumn.map((domain) => (
               <DomainCard
                 key={domain.domain}
                 domain={domain.domain}
@@ -99,9 +83,6 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
                 error={domain.error}
               />
             ))}
-            {checkingDomains.length === 0 && !isLoading && (
-              <p className="text-zinc-600 text-sm">All domains checked</p>
-            )}
           </div>
         </div>
       </div>
