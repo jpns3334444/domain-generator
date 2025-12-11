@@ -6,7 +6,7 @@ import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
 import DomainList, { DomainResult } from '@/components/DomainList';
 import { generateDomainNames } from '@/lib/gemini';
-import { checkDomainAvailability } from '@/lib/whois';
+import { checkDomainsHybrid, checkDomainsWithLimit } from '@/lib/whois';
 
 const DotLottiePlayer = dynamic(
   () => import('@dotlottie/react-player').then((mod) => mod.DotLottiePlayer),
@@ -24,8 +24,8 @@ const DotLottiePlayer = dynamic(
   }
 );
 
-const TARGET_AVAILABLE = 15;
-const MAX_BATCHES = 5; // Safety limit: max 5 batches (75 names)
+const TARGET_DISPLAY = 15; // Number of available domains to display
+const GENERATE_COUNT = 100; // Generate 100 names per batch for better coverage
 
 export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -34,13 +34,13 @@ export default function Home() {
   const [hasGenerated, setHasGenerated] = useState(false);
   const [primaryDomain, setPrimaryDomain] = useState<string | null>(null);
   const [lastPrompt, setLastPrompt] = useState<string>('');
+  const [leftoverDomains, setLeftoverDomains] = useState<DomainResult[]>([]);
 
-  // Use ref to track available count across async updates
-  const availableCountRef = useRef(0);
+  // Use ref to track counts across async updates
+  const displayedCountRef = useRef(0);
 
   const handleGenerate = useCallback(async (prompt: string, append: boolean = false) => {
     setIsGenerating(true);
-    const isFirstGeneration = !hasGenerated;
     setHasGenerated(true);
 
     // Store the prompt for "Load More" functionality (only on fresh generation)
@@ -48,98 +48,60 @@ export default function Home() {
       setLastPrompt(prompt);
       setDomains([]);
       setPrimaryDomain(null);
-      availableCountRef.current = 0;
+      setLeftoverDomains([]);
+      displayedCountRef.current = 0;
     }
 
     // Use stored prompt when appending, otherwise use provided prompt
     const activePrompt = append ? lastPrompt : prompt;
 
-    // For "Load More", set a new target based on current count
-    const targetAvailable = append
-      ? availableCountRef.current + TARGET_AVAILABLE
-      : TARGET_AVAILABLE;
-
     try {
-      let batchCount = 0;
-      let primarySet = append; // Skip setting primary if appending
+      // Generate domain names using Gemini (100 names for better coverage)
+      const geminiStart = performance.now();
+      const generatedNames = await generateDomainNames(GENERATE_COUNT, activePrompt);
+      console.log(`[Timing] Gemini API: ${(performance.now() - geminiStart).toFixed(0)}ms for ${generatedNames.length} names`);
 
-      // Keep generating until we have enough available domains
-      while (availableCountRef.current < targetAvailable && batchCount < MAX_BATCHES) {
-        batchCount++;
+      // Set primary domain from first name
+      if (!append && generatedNames.length > 0) {
+        setPrimaryDomain(`${generatedNames[0]}.com`);
+      }
 
-        // Generate domain names using Gemini
-        const geminiStart = performance.now();
-        const generatedNames = await generateDomainNames(15, activePrompt);
-        console.log(`[Timing] Gemini API: ${(performance.now() - geminiStart).toFixed(0)}ms for ${generatedNames.length} names`);
-
-        if (!primarySet && generatedNames.length > 0) {
-          setPrimaryDomain(`${generatedNames[0]}.com`);
-          primarySet = true;
-        }
-
-        // Create domain entries for each name + TLD combination
-        const newDomains: DomainResult[] = [];
-        for (const name of generatedNames) {
-          for (const tld of selectedTlds) {
-            newDomains.push({
-              domain: `${name}.${tld}`,
-              available: null, // Loading state
-            });
-          }
-        }
-
-        // Append new domains to existing ones
-        setDomains((prev) => [...prev, ...newDomains]);
-
-        // Check availability for each domain in parallel (results stream in as they complete)
-        const whoisStart = performance.now();
-        let completedCount = 0;
-        const checkPromises = newDomains.map(async (domainResult) => {
-          try {
-            const domainStart = performance.now();
-            const result = await checkDomainAvailability(domainResult.domain);
-            completedCount++;
-            const elapsed = (performance.now() - domainStart).toFixed(0);
-            if (parseInt(elapsed) > 2000) {
-              console.log(`[Timing] SLOW whois for ${result.domain}: ${elapsed}ms`);
-            }
-
-            if (result.available) {
-              availableCountRef.current++;
-            }
-
-            setDomains((prev) =>
-              prev.map((d) =>
-                d.domain === result.domain
-                  ? {
-                      ...d,
-                      available: result.available,
-                      premium: result.premium,
-                      aftermarket: result.aftermarket,
-                      error: result.error
-                    }
-                  : d
-              )
-            );
-          } catch (error) {
-            setDomains((prev) =>
-              prev.map((d) =>
-                d.domain === domainResult.domain
-                  ? { ...d, available: false, error: 'Check failed' }
-                  : d
-              )
-            );
-          }
-        });
-
-        await Promise.all(checkPromises);
-        console.log(`[Timing] All whois checks: ${(performance.now() - whoisStart).toFixed(0)}ms for ${newDomains.length} domains`);
-
-        // If we have enough available, stop generating
-        if (availableCountRef.current >= targetAvailable) {
-          break;
+      // Create domain list for all name + TLD combinations
+      const allDomains: string[] = [];
+      for (const name of generatedNames) {
+        for (const tld of selectedTlds) {
+          allDomains.push(`${name}.${tld}`);
         }
       }
+
+      // Track available domains as they come in
+      const availableResults: DomainResult[] = [];
+
+      // Check availability using hybrid approach (7 individual + 3 batch)
+      const whoisStart = performance.now();
+      await checkDomainsHybrid(allDomains, (result) => {
+        if (result.available) {
+          availableResults.push(result);
+
+          // Only add to displayed domains if under target
+          if (displayedCountRef.current < TARGET_DISPLAY) {
+            displayedCountRef.current++;
+            setDomains((prev) => [...prev, result]);
+          }
+        }
+      });
+
+      console.log(`[Timing] All whois checks: ${(performance.now() - whoisStart).toFixed(0)}ms for ${allDomains.length} domains`);
+      console.log(`[Results] Found ${availableResults.length} available domains`);
+
+      // Store leftovers (available domains beyond what we displayed)
+      const currentDisplayed = displayedCountRef.current;
+      const newLeftovers = availableResults.slice(currentDisplayed);
+      if (newLeftovers.length > 0) {
+        setLeftoverDomains((prev) => [...prev, ...newLeftovers]);
+        console.log(`[Leftovers] Stored ${newLeftovers.length} domains for Load More`);
+      }
+
     } catch (error) {
       console.error('Generation failed:', error);
       alert('Failed to generate domains. Please check your Gemini API key.');
@@ -150,7 +112,6 @@ export default function Home() {
 
   const handleSearch = useCallback(async (baseName: string) => {
     setIsGenerating(true);
-    const isFirstSearch = !hasGenerated;
     setHasGenerated(true);
 
     // Clean the base name (remove any TLD if user included it)
@@ -163,60 +124,47 @@ export default function Home() {
 
     // Clear previous results for search mode
     setDomains([]);
-    availableCountRef.current = 0;
+    setLeftoverDomains([]);
+    displayedCountRef.current = 0;
+    setPrimaryDomain(`${cleanName}.${selectedTlds[0] || 'com'}`);
 
-    if (isFirstSearch) {
-      setPrimaryDomain(`${cleanName}.${selectedTlds[0] || 'com'}`);
-    }
+    // Create domain list for all selected TLDs
+    const domainNames = selectedTlds.map((tld) => `${cleanName}.${tld}`);
 
-    // Create domain entries for each selected TLD
-    const newDomains: DomainResult[] = selectedTlds.map((tld) => ({
-      domain: `${cleanName}.${tld}`,
-      available: null,
-    }));
-
-    // Set domains
-    setDomains(newDomains);
-
-    // Check availability for each domain in parallel
-    const checkPromises = newDomains.map(async (domainResult) => {
-      try {
-        const result = await checkDomainAvailability(domainResult.domain);
-
-        if (result.available) {
-          availableCountRef.current++;
-        }
-
-        setDomains((prev) =>
-          prev.map((d) =>
-            d.domain === result.domain
-              ? {
-                  ...d,
-                  available: result.available,
-                  premium: result.premium,
-                  aftermarket: result.aftermarket,
-                  error: result.error
-                }
-              : d
-          )
-        );
-      } catch (error) {
-        setDomains((prev) =>
-          prev.map((d) =>
-            d.domain === domainResult.domain
-              ? { ...d, available: false, error: 'Check failed' }
-              : d
-          )
-        );
-      }
+    // Check availability - show all results for search (no filtering)
+    await checkDomainsWithLimit(domainNames, (result) => {
+      setDomains((prev) => [...prev, result]);
     });
 
-    await Promise.all(checkPromises);
     setIsGenerating(false);
-  }, [selectedTlds, hasGenerated]);
+  }, [selectedTlds]);
+
+  // Handle Load More - use leftovers first, then generate more
+  const handleLoadMore = useCallback(() => {
+    if (leftoverDomains.length > 0) {
+      // Use leftovers first
+      const toShow = leftoverDomains.slice(0, TARGET_DISPLAY);
+      const remaining = leftoverDomains.slice(TARGET_DISPLAY);
+
+      // Add to displayed domains
+      setDomains((prev) => [...prev, ...toShow]);
+      displayedCountRef.current += toShow.length;
+      setLeftoverDomains(remaining);
+
+      console.log(`[Load More] Showed ${toShow.length} from leftovers, ${remaining.length} remaining`);
+
+      // If we showed less than target and need more, generate more
+      if (toShow.length < TARGET_DISPLAY) {
+        handleGenerate('', true);
+      }
+    } else {
+      // No leftovers, generate more
+      handleGenerate('', true);
+    }
+  }, [leftoverDomains, handleGenerate]);
 
   // Count available domains for display
-  const availableCount = domains.filter(d => d.available === true).length;
+  const availableCount = domains.length;
 
   return (
     <div className="min-h-screen bg-black">
@@ -275,7 +223,7 @@ export default function Home() {
             <div className="text-center py-4">
               <div className="inline-flex items-center gap-3 text-zinc-400">
                 <div className="w-4 h-4 border-2 border-mauve border-t-transparent rounded-full animate-spin" />
-                <span>Finding available domains... ({availableCount}/{TARGET_AVAILABLE})</span>
+                <span>Finding available domains... ({availableCount}/{TARGET_DISPLAY})</span>
               </div>
             </div>
           )}
@@ -315,10 +263,10 @@ export default function Home() {
           {domains.length > 0 && !isGenerating && (
             <div className="text-center mt-12">
               <button
-                onClick={() => handleGenerate('', true)}
+                onClick={handleLoadMore}
                 className="bg-zinc-800 hover:bg-zinc-700 text-white px-8 py-3 rounded-lg font-medium transition-colors"
               >
-                Load More
+                Load More{leftoverDomains.length > 0 ? ` (${leftoverDomains.length} ready)` : ''}
               </button>
             </div>
           )}

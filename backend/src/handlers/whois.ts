@@ -45,15 +45,15 @@ async function getCachedDomain(domain: string): Promise<CachedDomain | null> {
       },
     });
 
-    // Race against a 100ms timeout - if DynamoDB is slow (cold start), skip cache
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 100));
+    // Race against a 300ms timeout - if DynamoDB is slow, skip cache
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 300));
     const result = await Promise.race([
       dynamodb.send(command),
       timeoutPromise,
     ]);
 
     if (result === null) {
-      console.log(`[Timing] ${domain}: cache lookup timed out (>100ms), skipping`);
+      console.log(`[Timing] ${domain}: cache lookup timed out (>300ms), skipping`);
       return null;
     }
 
@@ -124,7 +124,7 @@ async function checkRdap(domain: string, tld: string): Promise<DomainResult> {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
 
     const response = await fetch(`${rdapServer}${domain}`, {
       method: 'GET',
@@ -199,11 +199,30 @@ async function checkWhois(domain: string, tld: string): Promise<DomainResult> {
   return rdapResult;
 }
 
-// Check domain - cache disabled for now to test raw whois performance
+// Check domain with optimistic cache
 async function checkDomainWithCache(domain: string, tld: string): Promise<DomainResult> {
+  const start = Date.now();
+
+  // Try cache first (100ms timeout, non-blocking on miss)
+  const cached = await getCachedDomain(domain);
+  if (cached) {
+    console.log(`[Timing] ${domain}: cache HIT in ${Date.now() - start}ms`);
+    // Fire background refresh (don't await)
+    checkWhois(domain, tld).then(result => {
+      if (result.available !== cached.available) {
+        cacheDomainResult(domain, result.available);
+      }
+    }).catch(() => {});
+    return { domain, available: cached.available };
+  }
+
+  // Cache miss - do whois check
   const whoisStart = Date.now();
   const whoisResult = await checkWhois(domain, tld);
-  console.log(`[Timing] ${domain}: whois took ${Date.now() - whoisStart}ms (available: ${whoisResult.available})`);
+  console.log(`[Timing] ${domain}: cache MISS, whois took ${Date.now() - whoisStart}ms (available: ${whoisResult.available})`);
+
+  // Cache result (don't await)
+  cacheDomainResult(domain, whoisResult.available).catch(() => {});
   return whoisResult;
 }
 

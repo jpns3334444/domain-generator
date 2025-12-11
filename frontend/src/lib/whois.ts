@@ -54,6 +54,91 @@ const BATCH_SIZE = 30;
 // Concurrency for parallel batch requests
 const CONCURRENCY = 25;
 
+// Concurrency limit for individual domain checks (AWS Lambda account limit is 10)
+const INDIVIDUAL_CONCURRENCY = 8;
+
+// Check multiple domains with concurrency limiting (streams results as they complete)
+export async function checkDomainsWithLimit(
+  domains: string[],
+  onResult: (result: WhoisResult) => void
+): Promise<void> {
+  const queue = [...domains];
+  const inFlight: Promise<void>[] = [];
+
+  while (queue.length > 0 || inFlight.length > 0) {
+    // Fill up to INDIVIDUAL_CONCURRENCY
+    while (inFlight.length < INDIVIDUAL_CONCURRENCY && queue.length > 0) {
+      const domain = queue.shift()!;
+      const promise = checkDomainAvailability(domain)
+        .then(onResult)
+        .catch((error) => {
+          onResult({
+            domain,
+            available: false,
+            error: error instanceof Error ? error.message : 'Check failed',
+          });
+        });
+      inFlight.push(promise);
+    }
+
+    // Wait for at least one to complete
+    if (inFlight.length > 0) {
+      await Promise.race(inFlight);
+      // Remove completed promises
+      for (let i = inFlight.length - 1; i >= 0; i--) {
+        const status = await Promise.race([
+          inFlight[i].then(() => 'done'),
+          Promise.resolve('pending'),
+        ]);
+        if (status === 'done') {
+          inFlight.splice(i, 1);
+        }
+      }
+    }
+  }
+}
+
+// Check domains using hybrid approach: individual for quick feedback + batch for efficiency
+export async function checkDomainsHybrid(
+  domains: string[],
+  onResult: (result: WhoisResult) => void,
+  individualCount: number = 7,
+  batchCount: number = 3
+): Promise<void> {
+  // Split domains
+  const individualDomains = domains.slice(0, individualCount);
+  const batchDomains = domains.slice(individualCount);
+
+  // Split batch domains into batchCount groups
+  const batchSize = Math.ceil(batchDomains.length / batchCount);
+  const batches: string[][] = [];
+  for (let i = 0; i < batchDomains.length; i += batchSize) {
+    batches.push(batchDomains.slice(i, i + batchSize));
+  }
+
+  // Run individual checks (streaming) - these appear first for quick feedback
+  const individualPromise = checkDomainsWithLimit(individualDomains, onResult);
+
+  // Run batch checks in parallel
+  const batchPromises = batches.map(batch =>
+    checkDomainsBatch(batch)
+      .then(results => results.forEach(onResult))
+      .catch(error => {
+        // On batch failure, report error for each domain
+        batch.forEach(domain => {
+          onResult({
+            domain,
+            available: false,
+            error: error instanceof Error ? error.message : 'Batch check failed',
+          });
+        });
+      })
+  );
+
+  // Wait for all to complete
+  await Promise.all([individualPromise, ...batchPromises]);
+}
+
 // Check multiple domains via batch API
 export async function checkDomainsBatch(domains: string[]): Promise<WhoisResult[]> {
   if (!WHOIS_BATCH_API_URL) {
