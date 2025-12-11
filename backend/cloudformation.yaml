@@ -91,6 +91,23 @@ Resources:
         Variables:
           DOMAINS_TABLE: !Ref DomainsTable
 
+  # Lambda Function - Batch Domain Lookup
+  WhoisBatchFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: domain-generator-whois-batch
+      Runtime: nodejs20.x
+      Handler: handlers/whois.batchHandler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3Key
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          DOMAINS_TABLE: !Ref DomainsTable
+
   # Lambda Function - Prompts
   PromptsFunction:
     Type: AWS::Lambda::Function
@@ -127,6 +144,14 @@ Resources:
       ParentId: !GetAtt WhoisApi.RootResourceId
       PathPart: whois
 
+  # API Gateway Resource (/whois/batch)
+  WhoisBatchResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ParentId: !Ref WhoisResource
+      PathPart: batch
+
   # API Gateway Resource (/prompts)
   PromptsResource:
     Type: AWS::ApiGateway::Resource
@@ -147,6 +172,46 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WhoisLookupFunction.Arn}/invocations
+
+  # API Gateway Method (POST /whois/batch)
+  WhoisBatchPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref WhoisBatchResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WhoisBatchFunction.Arn}/invocations
+
+  # API Gateway Method (OPTIONS /whois/batch) for CORS
+  WhoisBatchOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref WhoisBatchResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
 
   # API Gateway Method (GET /prompts)
   PromptsGetMethod:
@@ -224,6 +289,15 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WhoisApi}/*/*/*
 
+  # Lambda Permission for API Gateway - WHOIS Batch
+  WhoisBatchApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WhoisBatchFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WhoisApi}/*/*/*
+
   # Lambda Permission for API Gateway - Prompts
   PromptsApiGatewayPermission:
     Type: AWS::Lambda::Permission
@@ -239,6 +313,8 @@ Resources:
     DependsOn:
       - WhoisGetMethod
       - WhoisOptionsMethod
+      - WhoisBatchPostMethod
+      - WhoisBatchOptionsMethod
       - PromptsGetMethod
       - PromptsOptionsMethod
     Properties:
@@ -262,6 +338,10 @@ Outputs:
   WhoisEndpoint:
     Description: WHOIS lookup endpoint
     Value: !Sub https://${WhoisApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/whois
+
+  WhoisBatchEndpoint:
+    Description: WHOIS batch lookup endpoint
+    Value: !Sub https://${WhoisApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/whois/batch
 
   PromptsEndpoint:
     Description: Prompts endpoint

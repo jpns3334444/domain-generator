@@ -167,44 +167,59 @@ async function checkRdap(domain: string, tld: string): Promise<DomainResult> {
   }
 }
 
-// Combined WHOIS check (DNS + RDAP)
+// Combined WHOIS check (DNS + RDAP in parallel)
 async function checkWhois(domain: string, tld: string): Promise<DomainResult> {
-  const dnsResult = await checkDns(domain);
-
-  if (dnsResult === 'taken') {
-    return {
-      domain,
-      available: false,
-    };
-  }
-
-  return checkRdap(domain, tld);
-}
-
-// Check domain with parallel cache lookup
-async function checkDomainWithCache(domain: string, tld: string): Promise<DomainResult> {
-  const [cachedResult, whoisResult] = await Promise.all([
-    getCachedDomain(domain),
-    checkWhois(domain, tld),
+  const [dnsResult, rdapResult] = await Promise.all([
+    checkDns(domain),
+    checkRdap(domain, tld),
   ]);
 
-  // Update cache if it differs or is missing (fire-and-forget)
-  if (!cachedResult || cachedResult.available !== whoisResult.available) {
-    cacheDomainResult(domain, whoisResult.available);
+  // If DNS confirms taken, use that (faster response, skip RDAP parsing)
+  if (dnsResult === 'taken') {
+    return { domain, available: false };
   }
 
+  // Otherwise use RDAP result (handles available, premium, errors)
+  return rdapResult;
+}
+
+// Check domain with optimistic cache - return cached result immediately, refresh in background
+async function checkDomainWithCache(domain: string, tld: string): Promise<DomainResult> {
+  const cachedResult = await getCachedDomain(domain);
+
+  if (cachedResult) {
+    // Fast path: return cached result immediately
+    // Fire off background refresh (don't await)
+    checkWhois(domain, tld).then((whoisResult) => {
+      if (cachedResult.available !== whoisResult.available) {
+        cacheDomainResult(domain, whoisResult.available);
+      }
+    }).catch((err) => {
+      console.error('Background whois refresh failed:', err);
+    });
+
+    return { domain, available: cachedResult.available };
+  }
+
+  // Cache miss: do full whois check and cache result
+  const whoisResult = await checkWhois(domain, tld);
+  cacheDomainResult(domain, whoisResult.available);
   return whoisResult;
 }
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Content-Type': 'application/json',
+};
+
+const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/;
+
+// Single domain handler (GET /whois?domain=example.com)
 export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Content-Type': 'application/json',
-  };
 
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
@@ -225,8 +240,6 @@ export const handler = async (
     };
   }
 
-  // Validate domain format
-  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/;
   if (!domainRegex.test(domain)) {
     return {
       statusCode: 400,
@@ -260,4 +273,92 @@ export const handler = async (
       }),
     };
   }
+};
+
+const MAX_BATCH_SIZE = 50;
+
+// Batch domain handler (POST /whois/batch)
+export const batchHandler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  // Handle CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: '',
+    };
+  }
+
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Method not allowed' }),
+    };
+  }
+
+  let domains: string[];
+  try {
+    const body = JSON.parse(event.body || '{}');
+    domains = body.domains;
+
+    if (!Array.isArray(domains) || domains.length === 0) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: 'Missing or empty domains array' }),
+      };
+    }
+
+    if (domains.length > MAX_BATCH_SIZE) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: `Maximum ${MAX_BATCH_SIZE} domains per batch` }),
+      };
+    }
+  } catch {
+    return {
+      statusCode: 400,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Invalid JSON body' }),
+    };
+  }
+
+  // Validate all domains
+  const invalidDomains = domains.filter((d) => !domainRegex.test(d));
+  if (invalidDomains.length > 0) {
+    return {
+      statusCode: 400,
+      headers: corsHeaders,
+      body: JSON.stringify({
+        error: 'Invalid domain format',
+        invalidDomains: invalidDomains.slice(0, 5), // Show first 5
+      }),
+    };
+  }
+
+  // Check all domains in parallel
+  const results = await Promise.all(
+    domains.map(async (domain) => {
+      const parts = domain.split('.');
+      const tld = parts[parts.length - 1].toLowerCase();
+      try {
+        return await checkDomainWithCache(domain, tld);
+      } catch (error) {
+        return {
+          domain,
+          available: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    })
+  );
+
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: JSON.stringify({ results }),
+  };
 };

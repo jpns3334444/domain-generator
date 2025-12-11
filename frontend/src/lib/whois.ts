@@ -8,6 +8,7 @@ export interface WhoisResult {
 }
 
 const WHOIS_API_URL = process.env.NEXT_PUBLIC_WHOIS_API_URL || '';
+const WHOIS_BATCH_API_URL = WHOIS_API_URL ? `${WHOIS_API_URL}/batch` : '';
 
 export async function checkDomainAvailability(domain: string): Promise<WhoisResult> {
   if (!WHOIS_API_URL) {
@@ -47,27 +48,83 @@ export async function checkDomainAvailability(domain: string): Promise<WhoisResu
   }
 }
 
-// Check multiple domains with higher concurrency (Domainr API is fast)
-const CONCURRENCY = 10;
+// Batch size for batch API calls
+const BATCH_SIZE = 30;
+
+// Concurrency for parallel batch requests
+const CONCURRENCY = 25;
+
+// Check multiple domains via batch API
+export async function checkDomainsBatch(domains: string[]): Promise<WhoisResult[]> {
+  if (!WHOIS_BATCH_API_URL) {
+    // Fallback: simulate responses for development
+    console.warn('WHOIS Batch API URL not configured, using mock responses');
+    await new Promise((resolve) => setTimeout(resolve, 200 + Math.random() * 300));
+    return domains.map((domain) => {
+      const available = Math.random() > 0.5;
+      return {
+        domain,
+        available,
+        premium: !available && Math.random() > 0.8,
+        aftermarket: !available && Math.random() > 0.9,
+      };
+    });
+  }
+
+  try {
+    const response = await fetch(WHOIS_BATCH_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domains }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Batch API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.results as WhoisResult[];
+  } catch (error) {
+    // Fallback to individual errors
+    return domains.map((domain) => ({
+      domain,
+      available: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }));
+  }
+}
 
 export async function checkDomainsParallel(
   domains: string[],
   onResult: (result: WhoisResult) => void
 ): Promise<void> {
-  const queue = [...domains];
+  // Split domains into batches
+  const batches: string[][] = [];
+  for (let i = 0; i < domains.length; i += BATCH_SIZE) {
+    batches.push(domains.slice(i, i + BATCH_SIZE));
+  }
+
+  // Process batches with concurrency limit
+  const queue = [...batches];
   const inProgress: Promise<void>[] = [];
 
   while (queue.length > 0 || inProgress.length > 0) {
-    // Start new requests up to concurrency limit
+    // Start new batch requests up to concurrency limit
     while (inProgress.length < CONCURRENCY && queue.length > 0) {
-      const domain = queue.shift()!;
-      const promise = checkDomainAvailability(domain)
-        .then(onResult)
+      const batch = queue.shift()!;
+      const promise = checkDomainsBatch(batch)
+        .then((results) => {
+          results.forEach(onResult);
+        })
         .catch((error) => {
-          onResult({
-            domain,
-            available: false,
-            error: error.message,
+          // On batch failure, report error for each domain in batch
+          batch.forEach((domain) => {
+            onResult({
+              domain,
+              available: false,
+              error: error.message,
+            });
           });
         });
 
