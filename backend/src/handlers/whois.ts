@@ -1,8 +1,12 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { DynamoDBClient, GetItemCommand, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import * as dns from 'dns';
 import { promisify } from 'util';
 
 const resolveNs = promisify(dns.resolveNs);
+
+const dynamodb = new DynamoDBClient({});
+const DOMAINS_TABLE = process.env.DOMAINS_TABLE || 'domain-generator-domains';
 
 // RDAP servers for different TLDs
 const RDAP_SERVERS: Record<string, string> = {
@@ -24,6 +28,52 @@ interface DomainResult {
   premium?: boolean;
   aftermarket?: boolean;
   error?: string;
+}
+
+interface CachedDomain {
+  domain: string;
+  available: boolean;
+}
+
+// Get cached domain from DynamoDB
+async function getCachedDomain(domain: string): Promise<CachedDomain | null> {
+  try {
+    const command = new GetItemCommand({
+      TableName: DOMAINS_TABLE,
+      Key: {
+        domain: { S: domain.toLowerCase() },
+      },
+    });
+    const response = await dynamodb.send(command);
+
+    if (response.Item) {
+      return {
+        domain: response.Item.domain?.S || domain,
+        available: response.Item.available?.BOOL ?? false,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Cache lookup error:', error);
+    return null;
+  }
+}
+
+// Store domain result in DynamoDB cache
+async function cacheDomainResult(domain: string, available: boolean): Promise<void> {
+  try {
+    const command = new PutItemCommand({
+      TableName: DOMAINS_TABLE,
+      Item: {
+        domain: { S: domain.toLowerCase() },
+        available: { BOOL: available },
+      },
+    });
+    await dynamodb.send(command);
+  } catch (error) {
+    console.error('Cache write error:', error);
+    // Non-fatal - continue without caching
+  }
 }
 
 // Fast DNS check - if no NS records, domain is likely available
@@ -117,6 +167,35 @@ async function checkRdap(domain: string, tld: string): Promise<DomainResult> {
   }
 }
 
+// Combined WHOIS check (DNS + RDAP)
+async function checkWhois(domain: string, tld: string): Promise<DomainResult> {
+  const dnsResult = await checkDns(domain);
+
+  if (dnsResult === 'taken') {
+    return {
+      domain,
+      available: false,
+    };
+  }
+
+  return checkRdap(domain, tld);
+}
+
+// Check domain with parallel cache lookup
+async function checkDomainWithCache(domain: string, tld: string): Promise<DomainResult> {
+  const [cachedResult, whoisResult] = await Promise.all([
+    getCachedDomain(domain),
+    checkWhois(domain, tld),
+  ]);
+
+  // Update cache if it differs or is missing (fire-and-forget)
+  if (!cachedResult || cachedResult.available !== whoisResult.available) {
+    cacheDomainResult(domain, whoisResult.available);
+  }
+
+  return whoisResult;
+}
+
 export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
@@ -161,28 +240,12 @@ export const handler = async (
   const tld = parts[parts.length - 1].toLowerCase();
 
   try {
-    // Step 1: Fast DNS check
-    const dnsResult = await checkDns(domain);
-
-    if (dnsResult === 'taken') {
-      // DNS confirms it's taken - no need for RDAP
-      return {
-        statusCode: 200,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          domain,
-          available: false,
-        }),
-      };
-    }
-
-    // Step 2: DNS says unknown/maybe available - confirm with RDAP
-    const rdapResult = await checkRdap(domain, tld);
+    const result = await checkDomainWithCache(domain, tld);
 
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: JSON.stringify(rdapResult),
+      body: JSON.stringify(result),
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
