@@ -87,12 +87,17 @@ async function cacheDomainResult(domain: string, available: boolean): Promise<vo
   }
 }
 
-// Fast DNS check - if no NS records, domain is likely available
+// Fast DNS check with timeout - if no NS records, domain is likely available
 async function checkDns(domain: string): Promise<'available' | 'taken' | 'unknown'> {
   try {
-    await resolveNs(domain);
-    // Has NS records = definitely taken
-    return 'taken';
+    // Race DNS against 2 second timeout
+    const timeoutPromise = new Promise<'unknown'>((resolve) =>
+      setTimeout(() => resolve('unknown'), 2000)
+    );
+    const dnsPromise = resolveNs(domain).then(() => 'taken' as const);
+
+    const result = await Promise.race([dnsPromise, timeoutPromise]);
+    return result;
   } catch (error: unknown) {
     const err = error as { code?: string };
     if (err.code === 'ENOTFOUND' || err.code === 'ENODATA') {
@@ -119,7 +124,7 @@ async function checkRdap(domain: string, tld: string): Promise<DomainResult> {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
 
     const response = await fetch(`${rdapServer}${domain}`, {
       method: 'GET',
