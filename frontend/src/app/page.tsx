@@ -206,6 +206,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-black">
+      <span className="hidden">Impact-Site-Verification: 664bdf39-f63c-4758-82b9-3a5adfcc8ca0</span>
       {/* Hero Section */}
       <div className={`flex flex-col items-center justify-center ${hasGenerated ? 'pt-8 pb-4' : 'min-h-screen'}`}>
         {!hasGenerated && (
