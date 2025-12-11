@@ -54,12 +54,17 @@ export default function Home() {
     // Use stored prompt when appending, otherwise use provided prompt
     const activePrompt = append ? lastPrompt : prompt;
 
+    // For "Load More", set a new target based on current count
+    const targetAvailable = append
+      ? availableCountRef.current + TARGET_AVAILABLE
+      : TARGET_AVAILABLE;
+
     try {
       let batchCount = 0;
       let primarySet = append; // Skip setting primary if appending
 
       // Keep generating until we have enough available domains
-      while (availableCountRef.current < TARGET_AVAILABLE && batchCount < MAX_BATCHES) {
+      while (availableCountRef.current < targetAvailable && batchCount < MAX_BATCHES) {
         batchCount++;
 
         // Generate domain names using Gemini
@@ -110,7 +115,7 @@ export default function Home() {
         }
 
         // If we have enough available, stop generating
-        if (availableCountRef.current >= TARGET_AVAILABLE) {
+        if (availableCountRef.current >= targetAvailable) {
           break;
         }
       }
