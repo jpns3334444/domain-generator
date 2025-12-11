@@ -6,7 +6,7 @@ import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
 import DomainList, { DomainResult } from '@/components/DomainList';
 import { generateDomainNames } from '@/lib/gemini';
-import { checkDomainsBatch } from '@/lib/whois';
+import { checkDomainAvailability } from '@/lib/whois';
 
 const DotLottiePlayer = dynamic(
   () => import('@dotlottie/react-player').then((mod) => mod.DotLottiePlayer),
@@ -89,30 +89,40 @@ export default function Home() {
         // Append new domains to existing ones
         setDomains((prev) => [...prev, ...newDomains]);
 
-        // Check availability for all domains in batch
-        const domainNames = newDomains.map((d) => d.domain);
-        const results = await checkDomainsBatch(domainNames);
+        // Check availability for each domain in parallel (results stream in as they complete)
+        const checkPromises = newDomains.map(async (domainResult) => {
+          try {
+            const result = await checkDomainAvailability(domainResult.domain);
 
-        // Update state with results
-        for (const result of results) {
-          if (result.available) {
-            availableCountRef.current++;
+            if (result.available) {
+              availableCountRef.current++;
+            }
+
+            setDomains((prev) =>
+              prev.map((d) =>
+                d.domain === result.domain
+                  ? {
+                      ...d,
+                      available: result.available,
+                      premium: result.premium,
+                      aftermarket: result.aftermarket,
+                      error: result.error
+                    }
+                  : d
+              )
+            );
+          } catch (error) {
+            setDomains((prev) =>
+              prev.map((d) =>
+                d.domain === domainResult.domain
+                  ? { ...d, available: false, error: 'Check failed' }
+                  : d
+              )
+            );
           }
+        });
 
-          setDomains((prev) =>
-            prev.map((d) =>
-              d.domain === result.domain
-                ? {
-                    ...d,
-                    available: result.available,
-                    premium: result.premium,
-                    aftermarket: result.aftermarket,
-                    error: result.error
-                  }
-                : d
-            )
-          );
-        }
+        await Promise.all(checkPromises);
 
         // If we have enough available, stop generating
         if (availableCountRef.current >= targetAvailable) {
@@ -157,31 +167,40 @@ export default function Home() {
     // Set domains
     setDomains(newDomains);
 
-    // Check availability for all domains in batch
-    const domainNames = newDomains.map((d) => d.domain);
-    const results = await checkDomainsBatch(domainNames);
+    // Check availability for each domain in parallel
+    const checkPromises = newDomains.map(async (domainResult) => {
+      try {
+        const result = await checkDomainAvailability(domainResult.domain);
 
-    // Update state with results
-    for (const result of results) {
-      if (result.available) {
-        availableCountRef.current++;
+        if (result.available) {
+          availableCountRef.current++;
+        }
+
+        setDomains((prev) =>
+          prev.map((d) =>
+            d.domain === result.domain
+              ? {
+                  ...d,
+                  available: result.available,
+                  premium: result.premium,
+                  aftermarket: result.aftermarket,
+                  error: result.error
+                }
+              : d
+          )
+        );
+      } catch (error) {
+        setDomains((prev) =>
+          prev.map((d) =>
+            d.domain === domainResult.domain
+              ? { ...d, available: false, error: 'Check failed' }
+              : d
+          )
+        );
       }
+    });
 
-      setDomains((prev) =>
-        prev.map((d) =>
-          d.domain === result.domain
-            ? {
-                ...d,
-                available: result.available,
-                premium: result.premium,
-                aftermarket: result.aftermarket,
-                error: result.error
-              }
-            : d
-        )
-      );
-    }
-
+    await Promise.all(checkPromises);
     setIsGenerating(false);
   }, [selectedTlds, hasGenerated]);
 
