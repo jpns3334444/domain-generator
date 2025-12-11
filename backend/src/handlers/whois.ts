@@ -185,9 +185,12 @@ async function checkWhois(domain: string, tld: string): Promise<DomainResult> {
 
 // Check domain with optimistic cache - return cached result immediately, refresh in background
 async function checkDomainWithCache(domain: string, tld: string): Promise<DomainResult> {
+  const cacheStart = Date.now();
   const cachedResult = await getCachedDomain(domain);
+  const cacheTime = Date.now() - cacheStart;
 
   if (cachedResult) {
+    console.log(`[Timing] ${domain}: CACHE HIT in ${cacheTime}ms`);
     // Fast path: return cached result immediately
     // Fire off background refresh (don't await)
     checkWhois(domain, tld).then((whoisResult) => {
@@ -202,7 +205,10 @@ async function checkDomainWithCache(domain: string, tld: string): Promise<Domain
   }
 
   // Cache miss: do full whois check and cache result
+  console.log(`[Timing] ${domain}: CACHE MISS (lookup took ${cacheTime}ms), doing whois...`);
+  const whoisStart = Date.now();
   const whoisResult = await checkWhois(domain, tld);
+  console.log(`[Timing] ${domain}: whois took ${Date.now() - whoisStart}ms (available: ${whoisResult.available})`);
   cacheDomainResult(domain, whoisResult.available);
   return whoisResult;
 }

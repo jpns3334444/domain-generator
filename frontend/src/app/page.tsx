@@ -68,7 +68,9 @@ export default function Home() {
         batchCount++;
 
         // Generate domain names using Gemini
+        const geminiStart = performance.now();
         const generatedNames = await generateDomainNames(15, activePrompt);
+        console.log(`[Timing] Gemini API: ${(performance.now() - geminiStart).toFixed(0)}ms for ${generatedNames.length} names`);
 
         if (!primarySet && generatedNames.length > 0) {
           setPrimaryDomain(`${generatedNames[0]}.com`);
@@ -90,9 +92,17 @@ export default function Home() {
         setDomains((prev) => [...prev, ...newDomains]);
 
         // Check availability for each domain in parallel (results stream in as they complete)
+        const whoisStart = performance.now();
+        let completedCount = 0;
         const checkPromises = newDomains.map(async (domainResult) => {
           try {
+            const domainStart = performance.now();
             const result = await checkDomainAvailability(domainResult.domain);
+            completedCount++;
+            const elapsed = (performance.now() - domainStart).toFixed(0);
+            if (parseInt(elapsed) > 2000) {
+              console.log(`[Timing] SLOW whois for ${result.domain}: ${elapsed}ms`);
+            }
 
             if (result.available) {
               availableCountRef.current++;
@@ -123,6 +133,7 @@ export default function Home() {
         });
 
         await Promise.all(checkPromises);
+        console.log(`[Timing] All whois checks: ${(performance.now() - whoisStart).toFixed(0)}ms for ${newDomains.length} domains`);
 
         // If we have enough available, stop generating
         if (availableCountRef.current >= targetAvailable) {
