@@ -76,12 +76,18 @@ export default function Home() {
 
       // Track available domains as they come in
       const availableResults: DomainResult[] = [];
+      let totalChecked = 0;
 
-      // Check availability using hybrid approach (7 individual + 3 batch)
+      // Check availability using hybrid approach (7 individual + batches of 30)
       const whoisStart = performance.now();
+      console.log(`[Page] Starting hybrid check for ${allDomains.length} domains`);
+
       await checkDomainsHybrid(allDomains, (result) => {
+        totalChecked++;
+
         if (result.available) {
           availableResults.push(result);
+          console.log(`[Page] Found available: ${result.domain} (${availableResults.length} total, displayed: ${displayedCountRef.current})`);
 
           // Only add to displayed domains if under target
           if (displayedCountRef.current < TARGET_DISPLAY) {

@@ -103,27 +103,37 @@ export async function checkDomainsHybrid(
   domains: string[],
   onResult: (result: WhoisResult) => void,
   individualCount: number = 7,
-  batchCount: number = 3
+  maxBatchSize: number = 30
 ): Promise<void> {
+  console.log(`[Hybrid] Starting check for ${domains.length} domains`);
+
   // Split domains
   const individualDomains = domains.slice(0, individualCount);
   const batchDomains = domains.slice(individualCount);
 
-  // Split batch domains into batchCount groups
-  const batchSize = Math.ceil(batchDomains.length / batchCount);
+  // Split batch domains into chunks of maxBatchSize
   const batches: string[][] = [];
-  for (let i = 0; i < batchDomains.length; i += batchSize) {
-    batches.push(batchDomains.slice(i, i + batchSize));
+  for (let i = 0; i < batchDomains.length; i += maxBatchSize) {
+    batches.push(batchDomains.slice(i, i + maxBatchSize));
   }
 
+  console.log(`[Hybrid] ${individualDomains.length} individual + ${batches.length} batches (${batches.map(b => b.length).join(', ')} domains each)`);
+
   // Run individual checks (streaming) - these appear first for quick feedback
-  const individualPromise = checkDomainsWithLimit(individualDomains, onResult);
+  const individualPromise = checkDomainsWithLimit(individualDomains, (result) => {
+    console.log(`[Individual] ${result.domain}: ${result.available ? 'available' : 'taken'}`);
+    onResult(result);
+  });
 
   // Run batch checks in parallel
-  const batchPromises = batches.map(batch =>
+  const batchPromises = batches.map((batch, idx) =>
     checkDomainsBatch(batch)
-      .then(results => results.forEach(onResult))
+      .then(results => {
+        console.log(`[Batch ${idx}] Completed with ${results.length} results`);
+        results.forEach(onResult);
+      })
       .catch(error => {
+        console.error(`[Batch ${idx}] Failed:`, error);
         // On batch failure, report error for each domain
         batch.forEach(domain => {
           onResult({
@@ -137,6 +147,7 @@ export async function checkDomainsHybrid(
 
   // Wait for all to complete
   await Promise.all([individualPromise, ...batchPromises]);
+  console.log(`[Hybrid] All checks complete`);
 }
 
 // Check multiple domains via batch API
