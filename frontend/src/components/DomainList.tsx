@@ -44,7 +44,7 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
         </h3>
       </div>
 
-      {/* Available domains grid */}
+      {/* Available domains grid - only show confirmed available */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-1">
         {availableDomains.map((domain) => (
           <DomainCard
@@ -53,15 +53,6 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
             available={domain.available}
             premium={domain.premium}
             aftermarket={domain.aftermarket}
-            error={domain.error}
-          />
-        ))}
-        {/* Show loading domains in the main grid */}
-        {loadingDomains.map((domain) => (
-          <DomainCard
-            key={domain.domain}
-            domain={domain.domain}
-            available={domain.available}
             error={domain.error}
           />
         ))}
