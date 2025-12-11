@@ -84,15 +84,26 @@ export default function Home() {
 
       await checkDomainsHybrid(allDomains, (result) => {
         totalChecked++;
+        console.log(`[Page] Result: ${result.domain} available=${result.available} (type: ${typeof result.available})`);
 
-        if (result.available) {
+        if (result.available === true) {
           availableResults.push(result);
-          console.log(`[Page] Found available: ${result.domain} (${availableResults.length} total, displayed: ${displayedCountRef.current})`);
+          console.log(`[Page] Adding to display: ${result.domain} (displayed: ${displayedCountRef.current}/${TARGET_DISPLAY})`);
 
           // Only add to displayed domains if under target
           if (displayedCountRef.current < TARGET_DISPLAY) {
             displayedCountRef.current++;
-            setDomains((prev) => [...prev, result]);
+            const newResult: DomainResult = {
+              domain: result.domain,
+              available: true,
+              premium: result.premium,
+              aftermarket: result.aftermarket,
+              error: result.error,
+            };
+            setDomains((prev) => {
+              console.log(`[Page] setDomains called, prev length: ${prev.length}`);
+              return [...prev, newResult];
+            });
           }
         }
       });
