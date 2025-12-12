@@ -132,10 +132,8 @@ export default function Home() {
       pendingQueueRef.current = [...pendingQueueRef.current, ...queueDomains];
       console.log(`[Generate] Showing ${initialDomains.length} domains, ${queueDomains.length} in queue`);
 
-      // === PHASE 3: Start checking availability for displayed domains ===
-      checkDomainsWithLimit(initialDomains, updateDomainStatus);
-
-      // === PHASE 4: Wait for full names and add to queue ===
+      // === PHASE 3: Wait for full names and populate queue ===
+      // Must populate queue BEFORE checking availability so replacements work
       const fullNames = await fullPromise;
       console.log(`[Generate] Got ${fullNames.length} full names`);
 
@@ -153,7 +151,8 @@ export default function Home() {
       pendingQueueRef.current = [...pendingQueueRef.current, ...additionalDomains];
       console.log(`[Generate] Added ${additionalDomains.length} more to queue, total queue: ${pendingQueueRef.current.length}`);
 
-      // Check all queue items - available ones become leftovers for Load More
+      // === PHASE 4: Start checking availability (queue is now populated for replacements) ===
+      checkDomainsWithLimit(initialDomains, updateDomainStatus);
       checkDomainsWithLimit([...pendingQueueRef.current], updateDomainStatus);
 
     } catch (error) {
