@@ -241,8 +241,8 @@ export default function Home() {
 
       console.log(`[Load More] Showed ${toShow.length} from leftovers, ${remaining.length} remaining`);
 
-      // If we showed less than target and need more, generate more
-      if (toShow.length < TARGET_DISPLAY) {
+      // If remaining leftovers are low, generate more to replenish
+      if (remaining.length < TARGET_DISPLAY) {
         handleGenerate('', true);
       }
     } else {
@@ -250,9 +250,6 @@ export default function Home() {
       handleGenerate('', true);
     }
   }, [leftoverDomains, handleGenerate]);
-
-  // Count available domains for display
-  const availableCount = domains.length;
 
   return (
     <div className="min-h-screen bg-black">
@@ -311,7 +308,7 @@ export default function Home() {
             <div className="text-center py-4">
               <div className="inline-flex items-center gap-3 text-zinc-400">
                 <div className="w-4 h-4 border-2 border-mauve border-t-transparent rounded-full animate-spin" />
-                <span>Finding available domains... ({availableCount}/{TARGET_DISPLAY})</span>
+                <span>Finding available domains...</span>
               </div>
             </div>
           )}
