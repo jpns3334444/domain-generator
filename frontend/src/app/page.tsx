@@ -54,7 +54,6 @@ export default function Home() {
       }
 
       // Update the domain's status
-      console.log('[updateDomainStatus]', result.domain, 'available:', result.available);
       let updated = prev.map(d =>
         d.domain === result.domain
           ? { ...d, available: result.available, premium: result.premium, aftermarket: result.aftermarket, error: result.error }

@@ -74,7 +74,7 @@ Return ONLY the domain names, one per line, with no explanations, numbering, or 
           temperature: 1.2,
           topK: 40,
           topP: 0.95,
-          maxOutputTokens: 1024,
+          maxOutputTokens: 2048,
         },
       }),
     });
@@ -100,10 +100,8 @@ Return ONLY the domain names, one per line, with no explanations, numbering, or 
     const text = data.candidates[0].content.parts[0].text;
 
     // Parse the response
-    const domainNames = text
-      .split('\n')
-      .map((line) => line.trim().toLowerCase())
-      .filter((line) => {
+    const rawLines = text.split('\n').map((line) => line.trim().toLowerCase());
+    const domainNames = rawLines.filter((line) => {
         if (!line) return false;
         if (line.includes(' ')) return false;
         if (line.includes('.')) return false;
@@ -111,6 +109,8 @@ Return ONLY the domain names, one per line, with no explanations, numbering, or 
         if (line.length < 3 || line.length > 15) return false;
         return true;
       });
+
+    console.log(`[Generate API] Requested: ${count}, Raw lines: ${rawLines.length}, After filter: ${domainNames.length}`);
 
     return NextResponse.json({ domains: domainNames });
   } catch (error) {
