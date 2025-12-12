@@ -24,29 +24,16 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
     return null;
   }
 
-  // Split domains into categories
-  const availableDomains = domains.filter(d => d.available === true);
+  // Split domains into categories - show available and pending in main grid
+  const visibleDomains = domains.filter(d => d.available === true || d.available === null);
   const unavailableDomains = domains.filter(d => d.available === false);
-  const loadingDomains = domains.filter(d => d.available === null);
-
-  const availableCount = availableDomains.length;
   const unavailableCount = unavailableDomains.length;
 
   return (
     <div className="w-full max-w-6xl mx-auto px-4 mt-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-zinc-400">
-          Available domains
-          {availableCount > 0 && (
-            <span className="text-mauve ml-2">({availableCount} found)</span>
-          )}
-        </h3>
-      </div>
-
-      {/* Available domains grid - only show confirmed available */}
+      {/* Main domains grid - show available and pending */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-1">
-        {availableDomains.map((domain) => (
+        {visibleDomains.map((domain) => (
           <DomainCard
             key={domain.domain}
             domain={domain.domain}
@@ -70,7 +57,7 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
             ) : (
               <ChevronRight className="w-4 h-4" />
             )}
-            <span>{unavailableCount} unavailable</span>
+            <span>Unavailable domains ({unavailableCount})</span>
           </button>
 
           {showUnavailable && (

@@ -20,7 +20,7 @@ export default function DomainCard({ domain, available, premium, aftermarket, er
         : 'bg-zinc-500'; // Taken
 
   const getButtonText = () => {
-    if (available === null) return 'Checking...';
+    if (available === null) return 'Searching...';
     if (error) return 'Error';
     if (available) return 'Register';
     if (premium) return 'Premium';
