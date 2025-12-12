@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
 import DomainList, { DomainResult } from '@/components/DomainList';
-import { generateDomainNamesParallel } from '@/lib/gemini';
+import { generateDomainNames } from '@/lib/gemini';
 import { checkDomainsWithLimit } from '@/lib/whois';
 
 const DotLottiePlayer = dynamic(
@@ -94,29 +94,28 @@ export default function Home() {
     const activePrompt = append ? lastPrompt : prompt;
 
     try {
-      // === PHASE 1: Generate domain names with Gemini ===
+      // === PHASE 1: Generate 100 domain names with Gemini ===
       console.log(`[Generate] Starting Gemini generation...`);
-      const { fast: fastNames, fullPromise } = await generateDomainNamesParallel(10, GENERATE_COUNT, activePrompt);
-      console.log(`[Generate] Got ${fastNames.length} fast names`);
+      const names = await generateDomainNames(GENERATE_COUNT, activePrompt);
+      console.log(`[Generate] Got ${names.length} names`);
 
-      // Set primary domain from first fast name
-      if (!append && fastNames.length > 0) {
-        setPrimaryDomain(`${fastNames[0]}.${selectedTlds[0] || 'com'}`);
-      }
-
-      // Create domain list from fast names
+      // Create domain list with all TLD combinations
       const allDomains: string[] = [];
-      for (const name of fastNames) {
+      for (const name of names) {
         for (const tld of selectedTlds) {
           allDomains.push(`${name}.${tld}`);
         }
       }
 
-      // === PHASE 2: Show first 15 domains immediately with pending status ===
+      // Set primary domain from first name
+      if (!append && allDomains.length > 0) {
+        setPrimaryDomain(allDomains[0]);
+      }
+
+      // === PHASE 2: Show first 15 domains with pending status, rest in queue ===
       const initialDomains = allDomains.slice(0, TARGET_DISPLAY);
       const queueDomains = allDomains.slice(TARGET_DISPLAY);
 
-      // Add initial domains to display
       const initialResults: DomainResult[] = initialDomains.map(domain => ({
         domain,
         available: null, // pending
@@ -128,30 +127,10 @@ export default function Home() {
         setDomains(initialResults);
       }
 
-      // Store rest in queue
       pendingQueueRef.current = [...pendingQueueRef.current, ...queueDomains];
       console.log(`[Generate] Showing ${initialDomains.length} domains, ${queueDomains.length} in queue`);
 
-      // === PHASE 3: Wait for full names and populate queue ===
-      // Must populate queue BEFORE checking availability so replacements work
-      const fullNames = await fullPromise;
-      console.log(`[Generate] Got ${fullNames.length} full names`);
-
-      // Dedupe against fast names
-      const fastNameSet = new Set(fastNames.map(n => n.toLowerCase()));
-      const additionalNames = fullNames.filter(n => !fastNameSet.has(n.toLowerCase()));
-
-      // Add additional names to queue
-      const additionalDomains: string[] = [];
-      for (const name of additionalNames) {
-        for (const tld of selectedTlds) {
-          additionalDomains.push(`${name}.${tld}`);
-        }
-      }
-      pendingQueueRef.current = [...pendingQueueRef.current, ...additionalDomains];
-      console.log(`[Generate] Added ${additionalDomains.length} more to queue, total queue: ${pendingQueueRef.current.length}`);
-
-      // === PHASE 4: Start checking availability (queue is now populated for replacements) ===
+      // === PHASE 3: Start checking availability ===
       checkDomainsWithLimit(initialDomains, updateDomainStatus);
       checkDomainsWithLimit([...pendingQueueRef.current], updateDomainStatus);
 
