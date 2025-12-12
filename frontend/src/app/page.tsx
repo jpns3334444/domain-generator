@@ -5,8 +5,8 @@ import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
 import DomainList, { DomainResult } from '@/components/DomainList';
-import { generateDomainNames } from '@/lib/gemini';
-import { checkDomainsHybrid, checkDomainsWithLimit } from '@/lib/whois';
+import { generateDomainNames, generateDomainNamesParallel } from '@/lib/gemini';
+import { checkDomainsHybrid, checkDomainsWithLimit, checkDomainsHybridOptimized } from '@/lib/whois';
 
 const DotLottiePlayer = dynamic(
   () => import('@dotlottie/react-player').then((mod) => mod.DotLottiePlayer),
@@ -40,6 +40,18 @@ export default function Home() {
   const displayedCountRef = useRef(0);
 
   const handleGenerate = useCallback(async (prompt: string, append: boolean = false) => {
+    // Comprehensive timing instrumentation
+    const timing = {
+      start: performance.now(),
+      geminiFast: 0,
+      geminiFull: 0,
+      firstResult: 0,
+      targetReached: 0,
+      complete: 0,
+    };
+
+    console.log(`[Timing] === Generation Started ===`);
+
     setIsGenerating(true);
     setHasGenerated(true);
 
@@ -55,69 +67,128 @@ export default function Home() {
     // Use stored prompt when appending, otherwise use provided prompt
     const activePrompt = append ? lastPrompt : prompt;
 
-    try {
-      // Generate domain names using Gemini (100 names for better coverage)
-      const geminiStart = performance.now();
-      const generatedNames = await generateDomainNames(GENERATE_COUNT, activePrompt);
-      console.log(`[Timing] Gemini API: ${(performance.now() - geminiStart).toFixed(0)}ms for ${generatedNames.length} names`);
+    // Track available domains across both fast and full phases
+    const allAvailableResults: DomainResult[] = [];
 
-      // Set primary domain from first name
-      if (!append && generatedNames.length > 0) {
-        setPrimaryDomain(`${generatedNames[0]}.com`);
+    // Helper to add result to display
+    const addToDisplay = (result: DomainResult) => {
+      allAvailableResults.push(result);
+
+      // Track time to first result
+      if (!timing.firstResult) {
+        timing.firstResult = performance.now() - timing.start;
+        console.log(`[Timing] First available result: ${timing.firstResult.toFixed(0)}ms`);
       }
 
-      // Create domain list for all name + TLD combinations
-      const allDomains: string[] = [];
-      for (const name of generatedNames) {
+      // Only add to displayed domains if under target
+      if (displayedCountRef.current < TARGET_DISPLAY) {
+        displayedCountRef.current++;
+        const newResult: DomainResult = {
+          domain: result.domain,
+          available: true,
+          premium: result.premium,
+          aftermarket: result.aftermarket,
+          error: result.error,
+        };
+        setDomains((prev) => [...prev, newResult]);
+
+        // Track time to reach target
+        if (displayedCountRef.current === TARGET_DISPLAY && !timing.targetReached) {
+          timing.targetReached = performance.now() - timing.start;
+          console.log(`[Timing] Target (${TARGET_DISPLAY}) reached: ${timing.targetReached.toFixed(0)}ms`);
+        }
+      }
+    };
+
+    try {
+      // === PHASE 1: Start parallel Gemini requests ===
+      console.log(`[Timing] Starting parallel Gemini: 10 fast + ${GENERATE_COUNT} full`);
+      const { fast: fastNames, fullPromise } = await generateDomainNamesParallel(10, GENERATE_COUNT, activePrompt);
+
+      timing.geminiFast = performance.now() - timing.start;
+      console.log(`[Timing] Gemini Fast: ${timing.geminiFast.toFixed(0)}ms for ${fastNames.length} names`);
+
+      // Set primary domain from first fast name
+      if (!append && fastNames.length > 0) {
+        setPrimaryDomain(`${fastNames[0]}.com`);
+      }
+
+      // === PHASE 2: Check fast names immediately (individual checks for speed) ===
+      const fastDomains: string[] = [];
+      for (const name of fastNames) {
         for (const tld of selectedTlds) {
-          allDomains.push(`${name}.${tld}`);
+          fastDomains.push(`${name}.${tld}`);
         }
       }
 
-      // Track available domains as they come in
-      const availableResults: DomainResult[] = [];
-      let totalChecked = 0;
-
-      // Check availability using hybrid approach (7 individual + batches of 30)
-      const whoisStart = performance.now();
-      console.log(`[Page] Starting hybrid check for ${allDomains.length} domains`);
-
-      await checkDomainsHybrid(allDomains, (result) => {
-        totalChecked++;
-        console.log(`[Page] Result: ${result.domain} available=${result.available} (type: ${typeof result.available})`);
-
+      console.log(`[Timing] Starting fast domain checks: ${fastDomains.length} domains`);
+      const fastCheckPromise = checkDomainsWithLimit(fastDomains, (result) => {
         if (result.available === true) {
-          availableResults.push(result);
-          console.log(`[Page] Adding to display: ${result.domain} (displayed: ${displayedCountRef.current}/${TARGET_DISPLAY})`);
-
-          // Only add to displayed domains if under target
-          if (displayedCountRef.current < TARGET_DISPLAY) {
-            displayedCountRef.current++;
-            const newResult: DomainResult = {
-              domain: result.domain,
-              available: true,
-              premium: result.premium,
-              aftermarket: result.aftermarket,
-              error: result.error,
-            };
-            setDomains((prev) => {
-              console.log(`[Page] setDomains called, prev length: ${prev.length}`);
-              return [...prev, newResult];
-            });
-          }
+          addToDisplay(result);
         }
       });
 
-      console.log(`[Timing] All whois checks: ${(performance.now() - whoisStart).toFixed(0)}ms for ${allDomains.length} domains`);
-      console.log(`[Results] Found ${availableResults.length} available domains`);
+      // === PHASE 3: Wait for full names, then batch check ===
+      const fullNames = await fullPromise;
+      timing.geminiFull = performance.now() - timing.start;
+      console.log(`[Timing] Gemini Full: ${timing.geminiFull.toFixed(0)}ms for ${fullNames.length} names`);
+
+      // Dedupe: remove names already in fast set
+      const fastNameSet = new Set(fastNames.map(n => n.toLowerCase()));
+      const additionalNames = fullNames.filter(n => !fastNameSet.has(n.toLowerCase()));
+      console.log(`[Timing] After dedupe: ${additionalNames.length} additional names (removed ${fullNames.length - additionalNames.length} duplicates)`);
+
+      // Create domain list for additional names
+      const additionalDomains: string[] = [];
+      for (const name of additionalNames) {
+        for (const tld of selectedTlds) {
+          additionalDomains.push(`${name}.${tld}`);
+        }
+      }
+
+      // Wait for fast checks to complete
+      await fastCheckPromise;
+      console.log(`[Timing] Fast checks complete: ${timing.firstResult ? 'found available' : 'none available'}, displayed ${displayedCountRef.current}`);
+
+      // === PHASE 4: Batch check remaining domains with early termination ===
+      if (additionalDomains.length > 0 && displayedCountRef.current < TARGET_DISPLAY + 10) {
+        console.log(`[Timing] Starting optimized batch check: ${additionalDomains.length} domains`);
+
+        await checkDomainsHybridOptimized(
+          additionalDomains,
+          (result) => {
+            if (result.available === true) {
+              addToDisplay(result);
+            }
+          },
+          {
+            individualCount: 7,
+            targetCount: TARGET_DISPLAY + 10, // 15 + 10 buffer for leftovers
+            parallelBatches: 3,
+            batchSize: 25,
+          }
+        );
+      }
+
+      timing.complete = performance.now() - timing.start;
 
       // Store leftovers (available domains beyond what we displayed)
       const currentDisplayed = displayedCountRef.current;
-      const newLeftovers = availableResults.slice(currentDisplayed);
+      const newLeftovers = allAvailableResults.filter((_, i) => i >= currentDisplayed);
       if (newLeftovers.length > 0) {
         setLeftoverDomains((prev) => [...prev, ...newLeftovers]);
         console.log(`[Leftovers] Stored ${newLeftovers.length} domains for Load More`);
       }
+
+      // Final timing summary
+      console.log(`[Timing] === Generation Complete ===`);
+      console.log(`[Timing] Summary:`);
+      console.log(`  - Gemini Fast: ${timing.geminiFast.toFixed(0)}ms`);
+      console.log(`  - Gemini Full: ${timing.geminiFull.toFixed(0)}ms`);
+      console.log(`  - First Result: ${timing.firstResult ? timing.firstResult.toFixed(0) + 'ms' : 'N/A'}`);
+      console.log(`  - Target Reached: ${timing.targetReached ? timing.targetReached.toFixed(0) + 'ms' : 'N/A'}`);
+      console.log(`  - Total: ${timing.complete.toFixed(0)}ms`);
+      console.log(`  - Found: ${allAvailableResults.length} available, displayed ${displayedCountRef.current}`);
 
     } catch (error) {
       console.error('Generation failed:', error);
@@ -125,7 +196,7 @@ export default function Home() {
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedTlds, hasGenerated, lastPrompt]);
+  }, [selectedTlds, lastPrompt]);
 
   const handleSearch = useCallback(async (baseName: string) => {
     setIsGenerating(true);

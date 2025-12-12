@@ -237,3 +237,118 @@ export async function checkMultipleDomains(
   const domains = tlds.map((tld) => `${baseName}.${tld}`);
   return checkDomainsParallel(domains, onResult);
 }
+
+export interface HybridOptimizedOptions {
+  individualCount?: number;  // How many to check individually first (default: 7)
+  targetCount?: number;      // Early terminate after finding this many available (default: 20)
+  parallelBatches?: number;  // How many batches to run in parallel (default: 3)
+  batchSize?: number;        // Size of each batch (default: 25)
+}
+
+export interface HybridOptimizedResult {
+  terminated: boolean;       // True if early terminated
+  availableFound: number;    // Total available domains found
+}
+
+// Optimized hybrid checking with early termination and parallel batches
+export async function checkDomainsHybridOptimized(
+  domains: string[],
+  onResult: (result: WhoisResult) => void,
+  options: HybridOptimizedOptions = {}
+): Promise<HybridOptimizedResult> {
+  const {
+    individualCount = 7,
+    targetCount = 20,
+    parallelBatches = 3,
+    batchSize = 25,
+  } = options;
+
+  let availableFound = 0;
+  let terminated = false;
+
+  console.log(`[HybridOptimized] Starting: ${domains.length} domains, target=${targetCount}, parallelBatches=${parallelBatches}, batchSize=${batchSize}`);
+
+  // Wrapper to track available count and check for early termination
+  const trackResult = (result: WhoisResult): boolean => {
+    if (terminated) return false;
+
+    if (result.available === true) {
+      availableFound++;
+      console.log(`[HybridOptimized] Found available #${availableFound}: ${result.domain}`);
+      if (availableFound >= targetCount) {
+        terminated = true;
+        console.log(`[HybridOptimized] Target ${targetCount} reached, terminating early`);
+      }
+    }
+    onResult(result);
+    return !terminated;
+  };
+
+  // Split domains
+  const individualDomains = domains.slice(0, individualCount);
+  const batchDomains = domains.slice(individualCount);
+
+  // Create batch chunks
+  const batches: string[][] = [];
+  for (let i = 0; i < batchDomains.length; i += batchSize) {
+    batches.push(batchDomains.slice(i, i + batchSize));
+  }
+
+  console.log(`[HybridOptimized] Split: ${individualDomains.length} individual + ${batches.length} batches`);
+
+  // Start individual checks immediately (these stream results quickly)
+  const individualPromise = (async () => {
+    const promises = individualDomains.map(async (domain) => {
+      if (terminated) return;
+      try {
+        const result = await checkDomainAvailability(domain);
+        trackResult(result);
+      } catch (error) {
+        trackResult({
+          domain,
+          available: false,
+          error: error instanceof Error ? error.message : 'Check failed',
+        });
+      }
+    });
+    await Promise.all(promises);
+  })();
+
+  // Process batches in parallel waves
+  const batchPromise = (async () => {
+    for (let waveStart = 0; waveStart < batches.length && !terminated; waveStart += parallelBatches) {
+      const wave = batches.slice(waveStart, waveStart + parallelBatches);
+      const waveNum = Math.floor(waveStart / parallelBatches) + 1;
+      console.log(`[HybridOptimized] Wave ${waveNum}: ${wave.length} batches in parallel (${wave.map(b => b.length).join(', ')} domains)`);
+
+      const waveStart_ = performance.now();
+      const wavePromises = wave.map(async (batch) => {
+        if (terminated) return;
+        try {
+          const results = await checkDomainsBatch(batch);
+          for (const result of results) {
+            if (!trackResult(result)) break;
+          }
+        } catch (error) {
+          console.error(`[HybridOptimized] Batch failed:`, error);
+          for (const domain of batch) {
+            if (!trackResult({
+              domain,
+              available: false,
+              error: error instanceof Error ? error.message : 'Batch check failed',
+            })) break;
+          }
+        }
+      });
+
+      await Promise.all(wavePromises);
+      console.log(`[HybridOptimized] Wave ${waveNum} completed in ${(performance.now() - waveStart_).toFixed(0)}ms`);
+    }
+  })();
+
+  // Wait for both individual and batch phases
+  await Promise.all([individualPromise, batchPromise]);
+
+  console.log(`[HybridOptimized] Complete: found ${availableFound} available, terminated=${terminated}`);
+  return { terminated, availableFound };
+}

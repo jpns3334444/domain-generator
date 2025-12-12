@@ -89,32 +89,39 @@ async function cacheDomainResult(domain: string, available: boolean): Promise<vo
 
 // Fast DNS check with timeout - if no NS records, domain is likely available
 async function checkDns(domain: string): Promise<'available' | 'taken' | 'unknown'> {
+  const start = Date.now();
   try {
-    // Race DNS against 2 second timeout
+    // Race DNS against 1 second timeout (reduced from 2s - DNS should be fast)
     const timeoutPromise = new Promise<'unknown'>((resolve) =>
-      setTimeout(() => resolve('unknown'), 2000)
+      setTimeout(() => resolve('unknown'), 1000)
     );
     const dnsPromise = resolveNs(domain).then(() => 'taken' as const);
 
     const result = await Promise.race([dnsPromise, timeoutPromise]);
+    console.log(`[Timing] ${domain}: DNS ${result} in ${Date.now() - start}ms`);
     return result;
   } catch (error: unknown) {
     const err = error as { code?: string };
+    const elapsed = Date.now() - start;
     if (err.code === 'ENOTFOUND' || err.code === 'ENODATA') {
       // No NS records - might be available, need to confirm with RDAP
+      console.log(`[Timing] ${domain}: DNS unknown (${err.code}) in ${elapsed}ms`);
       return 'unknown';
     }
     // Other errors (timeout, etc) - treat as unknown
+    console.log(`[Timing] ${domain}: DNS error (${err.code}) in ${elapsed}ms`);
     return 'unknown';
   }
 }
 
 // RDAP check for confirmation
 async function checkRdap(domain: string, tld: string): Promise<DomainResult> {
+  const start = Date.now();
   const rdapServer = RDAP_SERVERS[tld];
 
   if (!rdapServer) {
     // Fallback: if no RDAP server, rely on DNS result
+    console.log(`[Timing] ${domain}: RDAP skipped (unsupported TLD) in ${Date.now() - start}ms`);
     return {
       domain,
       available: false,
@@ -135,9 +142,11 @@ async function checkRdap(domain: string, tld: string): Promise<DomainResult> {
     });
 
     clearTimeout(timeoutId);
+    const elapsed = Date.now() - start;
 
     if (response.status === 404) {
       // 404 = domain not found = available
+      console.log(`[Timing] ${domain}: RDAP available (404) in ${elapsed}ms`);
       return {
         domain,
         available: true,
@@ -154,6 +163,7 @@ async function checkRdap(domain: string, tld: string): Promise<DomainResult> {
         s.includes('premium') || s.includes('reserved')
       );
 
+      console.log(`[Timing] ${domain}: RDAP taken (200) in ${elapsed}ms`);
       return {
         domain,
         available: false,
@@ -162,19 +172,23 @@ async function checkRdap(domain: string, tld: string): Promise<DomainResult> {
     }
 
     // Other status codes - treat as taken (conservative)
+    console.log(`[Timing] ${domain}: RDAP taken (${response.status}) in ${elapsed}ms`);
     return {
       domain,
       available: false,
     };
   } catch (error: unknown) {
+    const elapsed = Date.now() - start;
     const err = error as { name?: string; message?: string };
     if (err.name === 'AbortError') {
+      console.log(`[Timing] ${domain}: RDAP timeout in ${elapsed}ms`);
       return {
         domain,
         available: false,
         error: 'RDAP timeout',
       };
     }
+    console.log(`[Timing] ${domain}: RDAP error (${err.message}) in ${elapsed}ms`);
     return {
       domain,
       available: false,
@@ -183,19 +197,24 @@ async function checkRdap(domain: string, tld: string): Promise<DomainResult> {
   }
 }
 
-// Combined WHOIS check (DNS + RDAP in parallel)
+// Combined WHOIS check (DNS + RDAP in parallel, with short-circuit on DNS taken)
 async function checkWhois(domain: string, tld: string): Promise<DomainResult> {
-  const [dnsResult, rdapResult] = await Promise.all([
-    checkDns(domain),
-    checkRdap(domain, tld),
-  ]);
+  const start = Date.now();
 
-  // If DNS confirms taken, use that (faster response, skip RDAP parsing)
+  // Start both checks in parallel
+  const dnsPromise = checkDns(domain);
+  const rdapPromise = checkRdap(domain, tld);
+
+  // Wait for DNS first - if taken, we can return early without waiting for RDAP
+  const dnsResult = await dnsPromise;
   if (dnsResult === 'taken') {
+    console.log(`[Timing] ${domain}: WHOIS short-circuit (DNS taken) in ${Date.now() - start}ms`);
     return { domain, available: false };
   }
 
-  // Otherwise use RDAP result (handles available, premium, errors)
+  // DNS inconclusive, wait for RDAP result
+  const rdapResult = await rdapPromise;
+  console.log(`[Timing] ${domain}: WHOIS complete (DNS=${dnsResult}, RDAP=${rdapResult.available}) in ${Date.now() - start}ms`);
   return rdapResult;
 }
 
