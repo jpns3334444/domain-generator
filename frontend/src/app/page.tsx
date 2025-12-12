@@ -61,8 +61,9 @@ export default function Home() {
       setDomains([]);
       setPrimaryDomain(null);
       setLeftoverDomains([]);
-      displayedCountRef.current = 0;
     }
+    // Always reset counter for new batch of results
+    displayedCountRef.current = 0;
 
     // Use stored prompt when appending, otherwise use provided prompt
     const activePrompt = append ? lastPrompt : prompt;
