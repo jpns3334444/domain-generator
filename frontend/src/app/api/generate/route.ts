@@ -110,9 +110,11 @@ Return ONLY the domain names, one per line, with no explanations, numbering, or 
         return true;
       });
 
-    console.log(`[Generate API] Requested: ${count}, Raw lines: ${rawLines.length}, After filter: ${domainNames.length}`);
+    // Limit to requested count
+    const limitedNames = domainNames.slice(0, count);
+    console.log(`[Generate API] Requested: ${count}, Raw: ${rawLines.length}, Filtered: ${domainNames.length}, Returned: ${limitedNames.length}`);
 
-    return NextResponse.json({ domains: domainNames });
+    return NextResponse.json({ domains: limitedNames });
   } catch (error) {
     console.error('Generation error:', error);
     return NextResponse.json(
