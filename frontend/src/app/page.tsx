@@ -37,65 +37,42 @@ export default function Home() {
 
   // Queue of domain names waiting to be shown
   const pendingQueueRef = useRef<string[]>([]);
-  // Track which domains are currently being checked
-  const checkingDomainsRef = useRef<Set<string>>(new Set());
   // Store available domains found beyond the 15 shown (for Load More)
   const [leftoverDomains, setLeftoverDomains] = useState<DomainResult[]>([]);
 
-  // Helper to check a single domain and update state
-  const checkAndUpdateDomain = useCallback(async (domainName: string) => {
-    if (checkingDomainsRef.current.has(domainName)) return;
-    checkingDomainsRef.current.add(domainName);
+  // Update a domain's availability and maintain 15 visible
+  const updateDomainStatus = useCallback((result: DomainResult) => {
+    setDomains((prev) => {
+      // Check if this domain is in our list
+      const exists = prev.some(d => d.domain === result.domain);
+      if (!exists) {
+        // Queue item found available - store as leftover
+        if (result.available === true) {
+          setLeftoverDomains((l) => [...l, result]);
+        }
+        return prev;
+      }
 
-    try {
-      await checkDomainsWithLimit([domainName], (result) => {
-        setDomains((prev) => {
-          // Check if this domain is currently displayed
-          const isDisplayed = prev.some(d => d.domain === result.domain);
+      // Update the domain's status
+      let updated = prev.map(d =>
+        d.domain === result.domain
+          ? { ...d, available: result.available, premium: result.premium, aftermarket: result.aftermarket, error: result.error }
+          : d
+      );
 
-          if (isDisplayed) {
-            // Update the displayed domain's status
-            const updated = prev.map(d =>
-              d.domain === result.domain
-                ? { ...d, available: result.available, premium: result.premium, aftermarket: result.aftermarket, error: result.error }
-                : d
-            );
+      // If unavailable, add replacement to maintain 15 visible
+      if (result.available === false) {
+        const visibleCount = updated.filter(d => d.available === true || d.available === null).length;
+        if (visibleCount < TARGET_DISPLAY && pendingQueueRef.current.length > 0) {
+          const nextDomain = pendingQueueRef.current.shift()!;
+          updated = [...updated, { domain: nextDomain, available: null }];
+          // Check the new domain
+          checkDomainsWithLimit([nextDomain], updateDomainStatus);
+        }
+      }
 
-            // If unavailable, add a replacement from leftovers or queue
-            if (result.available === false) {
-              const visibleCount = updated.filter(d => d.available === true || d.available === null).length;
-              if (visibleCount < TARGET_DISPLAY) {
-                // Try leftovers first (already checked, available)
-                setLeftoverDomains((leftovers) => {
-                  if (leftovers.length > 0) {
-                    const [nextLeftover, ...remaining] = leftovers;
-                    setDomains((curr) => [...curr, nextLeftover]);
-                    return remaining;
-                  }
-                  return leftovers;
-                });
-              }
-            }
-
-            return updated;
-          } else {
-            // This is a queue item - if available, store as leftover
-            if (result.available === true) {
-              setLeftoverDomains((leftovers) => [...leftovers, {
-                domain: result.domain,
-                available: true,
-                premium: result.premium,
-                aftermarket: result.aftermarket,
-                error: result.error,
-              }]);
-            }
-            return prev;
-          }
-        });
-      });
-    } finally {
-      checkingDomainsRef.current.delete(domainName);
-    }
+      return updated;
+    });
   }, []);
 
   const handleGenerate = useCallback(async (prompt: string, append: boolean = false) => {
@@ -110,7 +87,6 @@ export default function Home() {
       setDomains([]);
       setPrimaryDomain(null);
       pendingQueueRef.current = [];
-      checkingDomainsRef.current.clear();
       setLeftoverDomains([]);
     }
 
@@ -157,9 +133,7 @@ export default function Home() {
       console.log(`[Generate] Showing ${initialDomains.length} domains, ${queueDomains.length} in queue`);
 
       // === PHASE 3: Start checking availability for displayed domains ===
-      initialDomains.forEach(domain => {
-        checkAndUpdateDomain(domain);
-      });
+      checkDomainsWithLimit(initialDomains, updateDomainStatus);
 
       // === PHASE 4: Wait for full names and add to queue ===
       const fullNames = await fullPromise;
@@ -179,8 +153,8 @@ export default function Home() {
       pendingQueueRef.current = [...pendingQueueRef.current, ...additionalDomains];
       console.log(`[Generate] Added ${additionalDomains.length} more to queue, total queue: ${pendingQueueRef.current.length}`);
 
-      // Check ALL queue items - they'll become leftovers for Load More
-      pendingQueueRef.current.forEach(domain => checkAndUpdateDomain(domain));
+      // Check all queue items - available ones become leftovers for Load More
+      checkDomainsWithLimit([...pendingQueueRef.current], updateDomainStatus);
 
     } catch (error) {
       console.error('Generation failed:', error);
@@ -188,7 +162,7 @@ export default function Home() {
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedTlds, lastPrompt, checkAndUpdateDomain]);
+  }, [selectedTlds, lastPrompt, updateDomainStatus]);
 
   const handleSearch = useCallback(async (baseName: string) => {
     setIsGenerating(true);
@@ -205,7 +179,6 @@ export default function Home() {
     // Clear previous results for search mode
     setDomains([]);
     pendingQueueRef.current = [];
-    checkingDomainsRef.current.clear();
     setLeftoverDomains([]);
     setPrimaryDomain(`${cleanName}.${selectedTlds[0] || 'com'}`);
 
