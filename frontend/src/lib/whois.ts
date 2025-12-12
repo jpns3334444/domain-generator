@@ -62,40 +62,22 @@ export async function checkDomainsWithLimit(
   domains: string[],
   onResult: (result: WhoisResult) => void
 ): Promise<void> {
-  const queue = [...domains];
-  const inFlight: Promise<void>[] = [];
-
-  while (queue.length > 0 || inFlight.length > 0) {
-    // Fill up to INDIVIDUAL_CONCURRENCY
-    while (inFlight.length < INDIVIDUAL_CONCURRENCY && queue.length > 0) {
-      const domain = queue.shift()!;
-      const promise = checkDomainAvailability(domain)
-        .then(onResult)
-        .catch((error) => {
-          onResult({
-            domain,
-            available: false,
-            error: error instanceof Error ? error.message : 'Check failed',
-          });
-        });
-      inFlight.push(promise);
+  // Simple approach: just run all in parallel with Promise.all
+  // The INDIVIDUAL_CONCURRENCY limit is less important now since we use batches
+  const promises = domains.map(async (domain) => {
+    try {
+      const result = await checkDomainAvailability(domain);
+      onResult(result);
+    } catch (error) {
+      onResult({
+        domain,
+        available: false,
+        error: error instanceof Error ? error.message : 'Check failed',
+      });
     }
+  });
 
-    // Wait for at least one to complete
-    if (inFlight.length > 0) {
-      await Promise.race(inFlight);
-      // Remove completed promises
-      for (let i = inFlight.length - 1; i >= 0; i--) {
-        const status = await Promise.race([
-          inFlight[i].then(() => 'done'),
-          Promise.resolve('pending'),
-        ]);
-        if (status === 'done') {
-          inFlight.splice(i, 1);
-        }
-      }
-    }
-  }
+  await Promise.all(promises);
 }
 
 // Check domains using hybrid approach: individual for quick feedback + batch for efficiency
