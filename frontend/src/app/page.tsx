@@ -276,14 +276,14 @@ export default function Home() {
 
           <DomainList domains={domains} isLoading={isGenerating} />
 
-          {/* Load More button */}
-          {domains.length > 0 && !isGenerating && (
+          {/* Load More button - always show after generation */}
+          {hasGenerated && !isGenerating && (
             <div className="text-center mt-12">
               <button
                 onClick={handleLoadMore}
                 className="bg-zinc-800 hover:bg-zinc-700 text-white px-8 py-3 rounded-lg font-medium transition-colors"
               >
-                Load More{leftoverDomains.length > 0 ? ` (${leftoverDomains.length} ready)` : ''}
+                Load More
               </button>
             </div>
           )}
