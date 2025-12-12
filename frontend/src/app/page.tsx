@@ -237,8 +237,8 @@ export default function Home() {
           {/* Loading state */}
           {domains.length === 0 && isGenerating && (
             <div className="text-center py-12">
-              <div className="inline-flex items-center gap-3 text-zinc-400">
-                <div className="w-5 h-5 border-2 border-mauve border-t-transparent rounded-full animate-spin" />
+              <div className="inline-flex flex-col items-center gap-3 text-zinc-400">
+                <img src="/loading-computer.gif" alt="Loading" className="w-16 h-16" />
                 <span>Generating domain names with AI...</span>
               </div>
             </div>
@@ -248,7 +248,7 @@ export default function Home() {
           {isGenerating && domains.length > 0 && (
             <div className="text-center py-4">
               <div className="inline-flex items-center gap-3 text-zinc-400">
-                <div className="w-4 h-4 border-2 border-mauve border-t-transparent rounded-full animate-spin" />
+                <img src="/loading-computer.gif" alt="Loading" className="w-8 h-8" />
                 <span>Finding available domains...</span>
               </div>
             </div>
