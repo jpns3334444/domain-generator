@@ -29,6 +29,8 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
   const unavailableDomains = domains.filter(d => d.available === false);
   const unavailableCount = unavailableDomains.length;
 
+  console.log('[DomainList] Total:', domains.length, 'Visible:', visibleDomains.length, 'Unavailable:', unavailableCount);
+
   return (
     <div className="w-full max-w-6xl mx-auto px-4 mt-8">
       {/* Main domains grid - show available and pending */}
