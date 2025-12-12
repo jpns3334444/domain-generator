@@ -39,6 +39,8 @@ export default function Home() {
   const pendingQueueRef = useRef<string[]>([]);
   // Track which domains are currently being checked
   const checkingDomainsRef = useRef<Set<string>>(new Set());
+  // Store available domains found beyond the 15 shown (for Load More)
+  const [leftoverDomains, setLeftoverDomains] = useState<DomainResult[]>([]);
 
   // Helper to check a single domain and update state
   const checkAndUpdateDomain = useCallback(async (domainName: string) => {
@@ -47,26 +49,48 @@ export default function Home() {
 
     try {
       await checkDomainsWithLimit([domainName], (result) => {
-        // Update the domain's availability status
         setDomains((prev) => {
-          const updated = prev.map(d =>
-            d.domain === result.domain
-              ? { ...d, available: result.available, premium: result.premium, aftermarket: result.aftermarket, error: result.error }
-              : d
-          );
+          // Check if this domain is currently displayed
+          const isDisplayed = prev.some(d => d.domain === result.domain);
 
-          // If unavailable, check if we need to add a replacement
-          if (result.available === false) {
-            const visibleCount = updated.filter(d => d.available === true || d.available === null).length;
-            if (visibleCount < TARGET_DISPLAY && pendingQueueRef.current.length > 0) {
-              const nextDomain = pendingQueueRef.current.shift()!;
-              updated.push({ domain: nextDomain, available: null });
-              // Schedule check for new domain
-              setTimeout(() => checkAndUpdateDomain(nextDomain), 0);
+          if (isDisplayed) {
+            // Update the displayed domain's status
+            const updated = prev.map(d =>
+              d.domain === result.domain
+                ? { ...d, available: result.available, premium: result.premium, aftermarket: result.aftermarket, error: result.error }
+                : d
+            );
+
+            // If unavailable, add a replacement from leftovers or queue
+            if (result.available === false) {
+              const visibleCount = updated.filter(d => d.available === true || d.available === null).length;
+              if (visibleCount < TARGET_DISPLAY) {
+                // Try leftovers first (already checked, available)
+                setLeftoverDomains((leftovers) => {
+                  if (leftovers.length > 0) {
+                    const [nextLeftover, ...remaining] = leftovers;
+                    setDomains((curr) => [...curr, nextLeftover]);
+                    return remaining;
+                  }
+                  return leftovers;
+                });
+              }
             }
-          }
 
-          return updated;
+            return updated;
+          } else {
+            // This is a queue item - if available, store as leftover
+            if (result.available === true) {
+              setLeftoverDomains((leftovers) => [...leftovers, {
+                domain: result.domain,
+                available: true,
+                premium: result.premium,
+                aftermarket: result.aftermarket,
+                error: result.error,
+              }]);
+            }
+            return prev;
+          }
         });
       });
     } finally {
@@ -87,6 +111,7 @@ export default function Home() {
       setPrimaryDomain(null);
       pendingQueueRef.current = [];
       checkingDomainsRef.current.clear();
+      setLeftoverDomains([]);
     }
 
     // Use stored prompt when appending, otherwise use provided prompt
@@ -154,9 +179,8 @@ export default function Home() {
       pendingQueueRef.current = [...pendingQueueRef.current, ...additionalDomains];
       console.log(`[Generate] Added ${additionalDomains.length} more to queue, total queue: ${pendingQueueRef.current.length}`);
 
-      // Check some queue items in background
-      const toCheck = pendingQueueRef.current.slice(0, 20);
-      toCheck.forEach(domain => checkAndUpdateDomain(domain));
+      // Check ALL queue items - they'll become leftovers for Load More
+      pendingQueueRef.current.forEach(domain => checkAndUpdateDomain(domain));
 
     } catch (error) {
       console.error('Generation failed:', error);
@@ -182,6 +206,7 @@ export default function Home() {
     setDomains([]);
     pendingQueueRef.current = [];
     checkingDomainsRef.current.clear();
+    setLeftoverDomains([]);
     setPrimaryDomain(`${cleanName}.${selectedTlds[0] || 'com'}`);
 
     // Create domain list for all selected TLDs
@@ -195,31 +220,26 @@ export default function Home() {
     setIsGenerating(false);
   }, [selectedTlds]);
 
-  // Handle Load More - use queue first, then generate more
+  // Handle Load More - use leftovers first, then generate more
   const handleLoadMore = useCallback(() => {
-    if (pendingQueueRef.current.length > 0) {
-      // Show next batch from queue
-      const toShow = pendingQueueRef.current.splice(0, TARGET_DISPLAY);
-      const newResults: DomainResult[] = toShow.map(domain => ({
-        domain,
-        available: null, // pending
-      }));
+    if (leftoverDomains.length > 0) {
+      // Show from leftovers (already checked, available)
+      const toShow = leftoverDomains.slice(0, TARGET_DISPLAY);
+      const remaining = leftoverDomains.slice(TARGET_DISPLAY);
 
-      setDomains((prev) => [...prev, ...newResults]);
-      console.log(`[Load More] Showing ${toShow.length} from queue, ${pendingQueueRef.current.length} remaining`);
+      setDomains((prev) => [...prev, ...toShow]);
+      setLeftoverDomains(remaining);
+      console.log(`[Load More] Showing ${toShow.length} from leftovers, ${remaining.length} remaining`);
 
-      // Start checking these domains
-      toShow.forEach(domain => checkAndUpdateDomain(domain));
-
-      // If queue is getting low, generate more
-      if (pendingQueueRef.current.length < TARGET_DISPLAY) {
+      // If leftovers are getting low, generate more
+      if (remaining.length < TARGET_DISPLAY) {
         handleGenerate('', true);
       }
     } else {
-      // No queue items, generate more
+      // No leftovers, generate more
       handleGenerate('', true);
     }
-  }, [handleGenerate, checkAndUpdateDomain]);
+  }, [leftoverDomains, handleGenerate]);
 
   return (
     <div className="min-h-screen bg-black">
