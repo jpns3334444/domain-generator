@@ -209,26 +209,11 @@ export default function Home() {
     setIsGenerating(false);
   }, [selectedTlds]);
 
-  // Handle Load More - use leftovers first, then generate more
+  // Handle Load More - generate 50 more names and check them
   const handleLoadMore = useCallback(() => {
-    if (leftoverDomains.length > 0) {
-      // Show from leftovers (already checked, available)
-      const toShow = leftoverDomains.slice(0, TARGET_DISPLAY);
-      const remaining = leftoverDomains.slice(TARGET_DISPLAY);
-
-      setDomains((prev) => [...prev, ...toShow]);
-      setLeftoverDomains(remaining);
-      console.log(`[Load More] Showing ${toShow.length} from leftovers, ${remaining.length} remaining`);
-
-      // If leftovers are getting low, generate more
-      if (remaining.length < TARGET_DISPLAY) {
-        handleGenerate('', true);
-      }
-    } else {
-      // No leftovers, generate more
-      handleGenerate('', true);
-    }
-  }, [leftoverDomains, handleGenerate]);
+    console.log(`[Load More] Generating more domains with prompt: "${lastPrompt}"`);
+    handleGenerate(lastPrompt, true);
+  }, [lastPrompt, handleGenerate]);
 
   return (
     <div className="min-h-screen bg-black">
