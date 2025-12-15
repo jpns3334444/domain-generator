@@ -47,8 +47,14 @@ export default function Home() {
       // Check if this domain is in our list
       const exists = prev.some(d => d.domain === result.domain);
       if (!exists) {
-        // Queue item found available - store as leftover
+        // Queue item found available - check if we need to fill display first
         if (result.available === true) {
+          const visibleCount = prev.filter(d => d.available === true || d.available === null).length;
+          if (visibleCount < TARGET_DISPLAY) {
+            // Fill the display slot
+            return [...prev, result];
+          }
+          // Display is full, store as leftover
           setLeftoverDomains((l) => [...l, result]);
         }
         return prev;
