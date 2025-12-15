@@ -26,6 +26,7 @@ interface DomainResult {
   domain: string;
   available: boolean;
   premium?: boolean;
+  premiumPrice?: number;
   aftermarket?: boolean;
   error?: string;
 }
@@ -84,6 +85,73 @@ async function cacheDomainResult(domain: string, available: boolean): Promise<vo
   } catch (error) {
     console.error('Cache write error:', error);
     // Non-fatal - continue without caching
+  }
+}
+
+interface PricingResult {
+  domain: string;
+  isPremium: boolean;
+  price?: number;
+}
+
+// Batch check Namecheap for premium pricing (max 50 domains per call)
+async function checkNamecheapPricingBatch(domains: string[]): Promise<PricingResult[]> {
+  const apiUser = process.env.NAMECHEAP_API_USER;
+  const apiKey = process.env.NAMECHEAP_API_KEY;
+  const clientIp = process.env.NAMECHEAP_CLIENT_IP;
+
+  if (!apiUser || !apiKey || domains.length === 0) {
+    return domains.map(d => ({ domain: d, isPremium: false }));
+  }
+
+  const start = Date.now();
+  try {
+    const params = new URLSearchParams({
+      ApiUser: apiUser,
+      ApiKey: apiKey,
+      UserName: apiUser,
+      Command: 'namecheap.domains.check',
+      ClientIp: clientIp || '0.0.0.0',
+      DomainList: domains.join(','),
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(`https://api.namecheap.com/xml.response?${params}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    const xml = await response.text();
+    const elapsed = Date.now() - start;
+    console.log(`[Timing] Namecheap batch pricing for ${domains.length} domains in ${elapsed}ms`);
+
+    // Parse XML for each domain's premium info
+    const results: PricingResult[] = [];
+    const domainPattern = /<DomainCheckResult\s+Domain="([^"]+)"[^>]*IsPremiumName="([^"]+)"[^>]*(?:PremiumRegistrationPrice="([^"]+)")?/g;
+    let match;
+
+    while ((match = domainPattern.exec(xml)) !== null) {
+      const domain = match[1].toLowerCase();
+      const isPremium = match[2] === 'true';
+      const price = match[3] ? parseFloat(match[3]) : undefined;
+      results.push({ domain, isPremium, price });
+    }
+
+    // For any domains not found in response, mark as non-premium
+    for (const domain of domains) {
+      if (!results.find(r => r.domain.toLowerCase() === domain.toLowerCase())) {
+        results.push({ domain, isPremium: false });
+      }
+    }
+
+    return results;
+  } catch (error: unknown) {
+    const elapsed = Date.now() - start;
+    const err = error as { name?: string; message?: string };
+    console.log(`[Timing] Namecheap batch pricing error (${err.message}) in ${elapsed}ms`);
+    return domains.map(d => ({ domain: d, isPremium: false }));
   }
 }
 
@@ -399,4 +467,93 @@ export const batchHandler = async (
     headers: corsHeaders,
     body: JSON.stringify({ results }),
   };
+};
+
+const MAX_PRICING_BATCH = 50;
+
+// Batch pricing handler (POST /pricing)
+export const pricingHandler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  // Handle CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: '',
+    };
+  }
+
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Method not allowed' }),
+    };
+  }
+
+  let domains: string[];
+  try {
+    const body = JSON.parse(event.body || '{}');
+    domains = body.domains;
+
+    if (!Array.isArray(domains) || domains.length === 0) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: 'Missing or empty domains array' }),
+      };
+    }
+
+    if (domains.length > MAX_PRICING_BATCH) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: `Maximum ${MAX_PRICING_BATCH} domains per batch` }),
+      };
+    }
+  } catch {
+    return {
+      statusCode: 400,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Invalid JSON body' }),
+    };
+  }
+
+  // Validate all domains
+  const invalidDomains = domains.filter((d) => !domainRegex.test(d));
+  if (invalidDomains.length > 0) {
+    return {
+      statusCode: 400,
+      headers: corsHeaders,
+      body: JSON.stringify({
+        error: 'Invalid domain format',
+        invalidDomains: invalidDomains.slice(0, 5),
+      }),
+    };
+  }
+
+  try {
+    const results = await checkNamecheapPricingBatch(domains);
+
+    // Transform to match frontend expectations
+    const pricing = results.map(r => ({
+      domain: r.domain,
+      premium: r.isPremium,
+      premiumPrice: r.price,
+    }));
+
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({ results: pricing }),
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      statusCode: 500,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: `Pricing lookup failed: ${errorMessage}` }),
+    };
+  }
 };

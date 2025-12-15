@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Domain Generator API with WHOIS lookup and prompts storage
+Description: Domain Generator API with EC2-based Namecheap domain checking
 
 Parameters:
   StageName:
@@ -17,9 +17,32 @@ Parameters:
     Type: String
     Description: Gemini API key for generating prompts
     NoEcho: true
+  NamecheapApiUser:
+    Type: String
+    Description: Namecheap API username
+    Default: ''
+  NamecheapApiKey:
+    Type: String
+    Description: Namecheap API key
+    NoEcho: true
+    Default: ''
+  EC2KeyPair:
+    Type: String
+    Description: EC2 Key Pair for SSH access (optional)
+    Default: ''
+  EC2InstanceType:
+    Type: String
+    Default: t3.micro
+    Description: EC2 instance type
+
+Conditions:
+  HasKeyPair: !Not [!Equals [!Ref EC2KeyPair, '']]
 
 Resources:
-  # DynamoDB Table for storing example prompts
+  # ============================================
+  # DynamoDB Tables
+  # ============================================
+
   PromptsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -32,7 +55,6 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # DynamoDB Table for caching domain availability
   DomainsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -45,7 +67,455 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # IAM Role for Lambda
+  # ============================================
+  # VPC and Networking for EC2
+  # ============================================
+
+  DomainCheckerVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: domain-generator-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: domain-generator-igw
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref DomainCheckerVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DomainCheckerVPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: domain-generator-public-subnet
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DomainCheckerVPC
+      Tags:
+        - Key: Name
+          Value: domain-generator-public-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # ============================================
+  # Security Group for EC2
+  # ============================================
+
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: domain-generator-ec2-sg
+      GroupDescription: Security group for domain checker EC2
+      VpcId: !Ref DomainCheckerVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: domain-generator-ec2-sg
+
+  # ============================================
+  # IAM Role for EC2
+  # ============================================
+
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: domain-generator-ec2-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                Resource: !GetAtt DomainsTable.Arn
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: domain-generator-ec2-profile
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # ============================================
+  # Elastic IP
+  # ============================================
+
+  DomainCheckerEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: domain-generator-eip
+
+  EIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt DomainCheckerEIP.AllocationId
+      InstanceId: !Ref DomainCheckerEC2
+
+  # ============================================
+  # EC2 Instance
+  # ============================================
+
+  DomainCheckerEC2:
+    Type: AWS::EC2::Instance
+    DependsOn: DomainCheckerEIP
+    Properties:
+      InstanceType: !Ref EC2InstanceType
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64}}'
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      KeyName: !If [HasKeyPair, !Ref EC2KeyPair, !Ref 'AWS::NoValue']
+      Tags:
+        - Key: Name
+          Value: domain-generator-ec2
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          exec > >(tee /var/log/user-data.log) 2>&1
+
+          echo "Starting EC2 setup..."
+
+          # Install Node.js 20
+          curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+          yum install -y nodejs
+
+          # Create app directory
+          mkdir -p /opt/domain-checker
+          cd /opt/domain-checker
+
+          # Create package.json
+          cat > package.json << 'PKGEOF'
+          {
+            "name": "domain-checker-ec2",
+            "version": "1.0.0",
+            "main": "server.js",
+            "scripts": {
+              "start": "node server.js"
+            },
+            "dependencies": {
+              "express": "^4.18.2",
+              "cors": "^2.8.5",
+              "xml2js": "^0.6.2",
+              "@aws-sdk/client-dynamodb": "^3.700.0"
+            }
+          }
+          PKGEOF
+
+          # Install dependencies
+          npm install
+
+          # Create server.js
+          cat > server.js << 'SERVEREOF'
+          const express = require('express');
+          const cors = require('cors');
+          const { parseStringPromise } = require('xml2js');
+          const { DynamoDBClient, GetItemCommand, PutItemCommand } = require('@aws-sdk/client-dynamodb');
+
+          const app = express();
+          app.use(cors());
+          app.use(express.json());
+
+          const PORT = process.env.PORT || 3000;
+          const NAMECHEAP_API_USER = process.env.NAMECHEAP_API_USER;
+          const NAMECHEAP_API_KEY = process.env.NAMECHEAP_API_KEY;
+          const NAMECHEAP_CLIENT_IP = process.env.NAMECHEAP_CLIENT_IP;
+          const DOMAINS_TABLE = process.env.DOMAINS_TABLE || 'domain-generator-domains';
+          const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
+
+          const dynamodb = new DynamoDBClient({ region: AWS_REGION });
+          const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/;
+          const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+          async function getCachedDomain(domain) {
+            try {
+              const result = await dynamodb.send(new GetItemCommand({
+                TableName: DOMAINS_TABLE,
+                Key: { domain: { S: domain.toLowerCase() } },
+              }));
+              if (result.Item) {
+                const cachedAt = parseInt(result.Item.cachedAt?.N || '0');
+                if (Date.now() - cachedAt < CACHE_TTL_MS) {
+                  return {
+                    domain: result.Item.domain?.S || domain,
+                    available: result.Item.available?.BOOL ?? false,
+                    premium: result.Item.premium?.BOOL ?? false,
+                    premiumPrice: result.Item.premiumPrice?.N ? parseFloat(result.Item.premiumPrice.N) : undefined,
+                  };
+                }
+              }
+              return null;
+            } catch (error) {
+              console.error('Cache lookup error:', error);
+              return null;
+            }
+          }
+
+          async function cacheDomainResult(result) {
+            try {
+              const item = {
+                domain: { S: result.domain.toLowerCase() },
+                available: { BOOL: result.available },
+                premium: { BOOL: result.premium || false },
+                cachedAt: { N: Date.now().toString() },
+              };
+              if (result.premiumPrice) {
+                item.premiumPrice = { N: result.premiumPrice.toString() };
+              }
+              await dynamodb.send(new PutItemCommand({ TableName: DOMAINS_TABLE, Item: item }));
+            } catch (error) {
+              console.error('Cache write error:', error);
+            }
+          }
+
+          async function checkNamecheapDomains(domains) {
+            if (!NAMECHEAP_API_USER || !NAMECHEAP_API_KEY || domains.length === 0) {
+              console.warn('Namecheap API not configured');
+              return domains.map(d => ({ domain: d, available: false, error: 'API not configured' }));
+            }
+
+            const start = Date.now();
+            try {
+              const params = new URLSearchParams({
+                ApiUser: NAMECHEAP_API_USER,
+                ApiKey: NAMECHEAP_API_KEY,
+                UserName: NAMECHEAP_API_USER,
+                Command: 'namecheap.domains.check',
+                ClientIp: NAMECHEAP_CLIENT_IP,
+                DomainList: domains.join(','),
+              });
+
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+              const response = await fetch('https://api.namecheap.com/xml.response?' + params, {
+                signal: controller.signal,
+              });
+              clearTimeout(timeoutId);
+
+              const xml = await response.text();
+              console.log('[Namecheap] Checked ' + domains.length + ' domains in ' + (Date.now() - start) + 'ms');
+
+              const parsed = await parseStringPromise(xml, { explicitArray: false });
+
+              if (parsed.ApiResponse?.$.Status === 'ERROR') {
+                const errors = parsed.ApiResponse.Errors?.Error;
+                const errorMsg = Array.isArray(errors) ? errors.map(e => e._).join(', ') : errors?._ || 'Unknown error';
+                console.error('[Namecheap] API Error:', errorMsg);
+                return domains.map(d => ({ domain: d, available: false, error: errorMsg }));
+              }
+
+              const results = [];
+              const domainCheckResults = parsed.ApiResponse?.CommandResponse?.DomainCheckResult;
+              if (!domainCheckResults) {
+                return domains.map(d => ({ domain: d, available: false, error: 'Invalid API response' }));
+              }
+
+              const checkResults = Array.isArray(domainCheckResults) ? domainCheckResults : [domainCheckResults];
+              for (const result of checkResults) {
+                const domain = result.$.Domain.toLowerCase();
+                const available = result.$.Available === 'true';
+                const isPremium = result.$.IsPremiumName === 'true';
+                const premiumPrice = result.$.PremiumRegistrationPrice ? parseFloat(result.$.PremiumRegistrationPrice) : undefined;
+                results.push({ domain, available, premium: isPremium, premiumPrice: isPremium ? premiumPrice : undefined });
+              }
+
+              for (const domain of domains) {
+                if (!results.find(r => r.domain.toLowerCase() === domain.toLowerCase())) {
+                  results.push({ domain, available: false, error: 'Not in API response' });
+                }
+              }
+
+              return results;
+            } catch (error) {
+              console.error('[Namecheap] Error after ' + (Date.now() - start) + 'ms:', error.message);
+              return domains.map(d => ({ domain: d, available: false, error: error.message }));
+            }
+          }
+
+          async function checkDomainsWithCache(domains) {
+            const results = [];
+            const uncachedDomains = [];
+
+            for (const domain of domains) {
+              const cached = await getCachedDomain(domain);
+              if (cached) {
+                results.push(cached);
+              } else {
+                uncachedDomains.push(domain);
+              }
+            }
+
+            if (uncachedDomains.length > 0) {
+              const namecheapResults = await checkNamecheapDomains(uncachedDomains);
+              for (const result of namecheapResults) {
+                results.push(result);
+                if (!result.error) {
+                  cacheDomainResult(result).catch(() => {});
+                }
+              }
+            }
+
+            return domains.map(d => results.find(r => r.domain.toLowerCase() === d.toLowerCase()) || { domain: d, available: false, error: 'Unknown' });
+          }
+
+          app.get('/whois', async (req, res) => {
+            const domain = req.query.domain;
+            if (!domain) return res.status(400).json({ error: 'Missing domain parameter' });
+            if (!domainRegex.test(domain)) return res.status(400).json({ error: 'Invalid domain format' });
+
+            try {
+              const [result] = await checkDomainsWithCache([domain]);
+              res.json(result);
+            } catch (error) {
+              res.status(500).json({ domain, available: false, error: 'Domain lookup failed: ' + error.message });
+            }
+          });
+
+          app.post('/whois/batch', async (req, res) => {
+            const { domains } = req.body;
+            if (!Array.isArray(domains) || domains.length === 0) return res.status(400).json({ error: 'Missing or empty domains array' });
+            if (domains.length > 50) return res.status(400).json({ error: 'Maximum 50 domains per batch' });
+
+            const invalidDomains = domains.filter(d => !domainRegex.test(d));
+            if (invalidDomains.length > 0) return res.status(400).json({ error: 'Invalid domain format', invalidDomains: invalidDomains.slice(0, 5) });
+
+            try {
+              const results = await checkDomainsWithCache(domains);
+              res.json({ results });
+            } catch (error) {
+              res.status(500).json({ error: 'Batch lookup failed: ' + error.message });
+            }
+          });
+
+          app.post('/pricing', async (req, res) => {
+            const { domains } = req.body;
+            if (!Array.isArray(domains) || domains.length === 0) return res.status(400).json({ error: 'Missing or empty domains array' });
+            if (domains.length > 50) return res.status(400).json({ error: 'Maximum 50 domains per batch' });
+
+            const invalidDomains = domains.filter(d => !domainRegex.test(d));
+            if (invalidDomains.length > 0) return res.status(400).json({ error: 'Invalid domain format', invalidDomains: invalidDomains.slice(0, 5) });
+
+            try {
+              const results = await checkDomainsWithCache(domains);
+              const pricing = results.map(r => ({ domain: r.domain, premium: r.premium || false, premiumPrice: r.premiumPrice }));
+              res.json({ results: pricing });
+            } catch (error) {
+              res.status(500).json({ error: 'Pricing lookup failed: ' + error.message });
+            }
+          });
+
+          app.get('/health', (req, res) => {
+            res.json({ status: 'ok', timestamp: new Date().toISOString(), config: { namecheapConfigured: !!(NAMECHEAP_API_USER && NAMECHEAP_API_KEY), clientIp: NAMECHEAP_CLIENT_IP } });
+          });
+
+          app.listen(PORT, () => {
+            console.log('Domain checker server running on port ' + PORT);
+            console.log('Namecheap API User: ' + (NAMECHEAP_API_USER || 'NOT SET'));
+            console.log('Client IP: ' + (NAMECHEAP_CLIENT_IP || 'NOT SET'));
+          });
+          SERVEREOF
+
+          # Get the Elastic IP (it's allocated but not yet associated to this instance)
+          TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+          PUBLIC_IP=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+
+          # Create environment file
+          cat > /opt/domain-checker/.env << ENVEOF
+          NAMECHEAP_API_USER=${NamecheapApiUser}
+          NAMECHEAP_API_KEY=${NamecheapApiKey}
+          NAMECHEAP_CLIENT_IP=$PUBLIC_IP
+          PORT=3000
+          DOMAINS_TABLE=${DomainsTable}
+          AWS_REGION=${AWS::Region}
+          ENVEOF
+
+          # Create systemd service
+          cat > /etc/systemd/system/domain-checker.service << 'SVCEOF'
+          [Unit]
+          Description=Domain Checker Express Server
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory=/opt/domain-checker
+          EnvironmentFile=/opt/domain-checker/.env
+          ExecStart=/usr/bin/node server.js
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+          SVCEOF
+
+          systemctl daemon-reload
+          systemctl enable domain-checker
+          systemctl start domain-checker
+
+          echo "EC2 setup complete!"
+
+  # ============================================
+  # IAM Role for Lambda (Prompts only)
+  # ============================================
+
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -72,43 +542,11 @@ Resources:
                   - dynamodb:DescribeTable
                 Resource:
                   - !GetAtt PromptsTable.Arn
-                  - !GetAtt DomainsTable.Arn
 
-  # Lambda Function - Domain Lookup (DNS + RDAP)
-  WhoisLookupFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: domain-generator-whois
-      Runtime: nodejs20.x
-      Handler: handlers/whois.handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref S3Bucket
-        S3Key: !Ref S3Key
-      Timeout: 15
-      MemorySize: 128
-      Environment:
-        Variables:
-          DOMAINS_TABLE: !Ref DomainsTable
+  # ============================================
+  # Lambda Function - Prompts only
+  # ============================================
 
-  # Lambda Function - Batch Domain Lookup
-  WhoisBatchFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: domain-generator-whois-batch
-      Runtime: nodejs20.x
-      Handler: handlers/whois.batchHandler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref S3Bucket
-        S3Key: !Ref S3Key
-      Timeout: 30
-      MemorySize: 256
-      Environment:
-        Variables:
-          DOMAINS_TABLE: !Ref DomainsTable
-
-  # Lambda Function - Prompts
   PromptsFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -126,7 +564,10 @@ Resources:
           PROMPTS_TABLE: !Ref PromptsTable
           GEMINI_API_KEY: !Ref GeminiApiKey
 
+  # ============================================
   # API Gateway REST API
+  # ============================================
+
   WhoisApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -136,7 +577,7 @@ Resources:
         Types:
           - REGIONAL
 
-  # API Gateway Resource (/whois)
+  # API Gateway Resources
   WhoisResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -144,7 +585,6 @@ Resources:
       ParentId: !GetAtt WhoisApi.RootResourceId
       PathPart: whois
 
-  # API Gateway Resource (/whois/batch)
   WhoisBatchResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -152,7 +592,6 @@ Resources:
       ParentId: !Ref WhoisResource
       PathPart: batch
 
-  # API Gateway Resource (/prompts)
   PromptsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -160,73 +599,36 @@ Resources:
       ParentId: !GetAtt WhoisApi.RootResourceId
       PathPart: prompts
 
-  # API Gateway Method (GET /whois)
+  PricingResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ParentId: !GetAtt WhoisApi.RootResourceId
+      PathPart: pricing
+
+  # ============================================
+  # API Gateway Methods - HTTP_PROXY to EC2
+  # ============================================
+
+  # GET /whois -> EC2
   WhoisGetMethod:
     Type: AWS::ApiGateway::Method
+    DependsOn: EIPAssociation
     Properties:
       RestApiId: !Ref WhoisApi
       ResourceId: !Ref WhoisResource
       HttpMethod: GET
       AuthorizationType: NONE
+      RequestParameters:
+        method.request.querystring.domain: true
       Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WhoisLookupFunction.Arn}/invocations
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: GET
+        Uri: !Sub 'http://${DomainCheckerEIP}:3000/whois'
+        RequestParameters:
+          integration.request.querystring.domain: method.request.querystring.domain
 
-  # API Gateway Method (POST /whois/batch)
-  WhoisBatchPostMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref WhoisApi
-      ResourceId: !Ref WhoisBatchResource
-      HttpMethod: POST
-      AuthorizationType: NONE
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WhoisBatchFunction.Arn}/invocations
-
-  # API Gateway Method (OPTIONS /whois/batch) for CORS
-  WhoisBatchOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref WhoisApi
-      ResourceId: !Ref WhoisBatchResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: 200
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-            ResponseTemplates:
-              application/json: ''
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-
-  # API Gateway Method (GET /prompts)
-  PromptsGetMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref WhoisApi
-      ResourceId: !Ref PromptsResource
-      HttpMethod: GET
-      AuthorizationType: NONE
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PromptsFunction.Arn}/invocations
-
-  # API Gateway Method (OPTIONS /whois) for CORS
+  # OPTIONS /whois for CORS
   WhoisOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -253,7 +655,104 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
-  # API Gateway Method (OPTIONS /prompts) for CORS
+  # POST /whois/batch -> EC2
+  WhoisBatchPostMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn: EIPAssociation
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref WhoisBatchResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'http://${DomainCheckerEIP}:3000/whois/batch'
+
+  # OPTIONS /whois/batch for CORS
+  WhoisBatchOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref WhoisBatchResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # POST /pricing -> EC2
+  PricingPostMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn: EIPAssociation
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref PricingResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'http://${DomainCheckerEIP}:3000/pricing'
+
+  # OPTIONS /pricing for CORS
+  PricingOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref PricingResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # ============================================
+  # API Gateway Methods - Lambda (Prompts only)
+  # ============================================
+
+  PromptsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref PromptsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PromptsFunction.Arn}/invocations
+
   PromptsOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -280,24 +779,6 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
-  # Lambda Permission for API Gateway - WHOIS
-  LambdaApiGatewayPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref WhoisLookupFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WhoisApi}/*/*/*
-
-  # Lambda Permission for API Gateway - WHOIS Batch
-  WhoisBatchApiGatewayPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref WhoisBatchFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WhoisApi}/*/*/*
-
   # Lambda Permission for API Gateway - Prompts
   PromptsApiGatewayPermission:
     Type: AWS::Lambda::Permission
@@ -307,7 +788,10 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WhoisApi}/*/*/*
 
+  # ============================================
   # API Gateway Deployment
+  # ============================================
+
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -317,10 +801,11 @@ Resources:
       - WhoisBatchOptionsMethod
       - PromptsGetMethod
       - PromptsOptionsMethod
+      - PricingPostMethod
+      - PricingOptionsMethod
     Properties:
       RestApiId: !Ref WhoisApi
 
-  # API Gateway Stage
   ApiStage:
     Type: AWS::ApiGateway::Stage
     Properties:
@@ -346,6 +831,20 @@ Outputs:
   PromptsEndpoint:
     Description: Prompts endpoint
     Value: !Sub https://${WhoisApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/prompts
+
+  PricingEndpoint:
+    Description: Pricing endpoint
+    Value: !Sub https://${WhoisApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/pricing
+
+  EC2ElasticIP:
+    Description: Elastic IP for Namecheap API whitelist
+    Value: !Ref DomainCheckerEIP
+    Export:
+      Name: DomainGeneratorEC2IP
+
+  EC2InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref DomainCheckerEC2
 
   PromptsTableName:
     Description: DynamoDB table name for prompts
