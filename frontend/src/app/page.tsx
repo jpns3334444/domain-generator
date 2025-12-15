@@ -94,6 +94,11 @@ export default function Home() {
     // Use stored prompt when appending, otherwise use provided prompt
     const activePrompt = append ? lastPrompt : prompt;
 
+    // Clear pending queue when generating more (avoid accumulation)
+    if (append) {
+      pendingQueueRef.current = [];
+    }
+
     try {
       // === PHASE 1: Generate 100 domain names with Gemini ===
       console.log(`[Generate] Starting Gemini generation...`);
@@ -209,7 +214,7 @@ export default function Home() {
     setIsGenerating(false);
   }, [selectedTlds]);
 
-  // Handle Load More - show leftovers first, then generate more when empty
+  // Handle Load More - show leftovers first, generate more when running low
   const handleLoadMore = useCallback(() => {
     if (leftoverDomains.length > 0) {
       // Show from leftovers (already checked, available)
@@ -219,12 +224,18 @@ export default function Home() {
       setDomains((prev) => [...prev, ...toShow]);
       setLeftoverDomains(remaining);
       console.log(`[Load More] Showing ${toShow.length} from leftovers, ${remaining.length} remaining`);
+
+      // If running low on leftovers, generate more in background
+      if (remaining.length < TARGET_DISPLAY && !isGenerating) {
+        console.log(`[Load More] Running low, generating more with prompt: "${lastPrompt}"`);
+        handleGenerate(lastPrompt, true);
+      }
     } else {
       // No leftovers, generate more
       console.log(`[Load More] No leftovers, generating more with prompt: "${lastPrompt}"`);
       handleGenerate(lastPrompt, true);
     }
-  }, [leftoverDomains, lastPrompt, handleGenerate]);
+  }, [leftoverDomains, lastPrompt, isGenerating, handleGenerate]);
 
   return (
     <div className="min-h-screen bg-black">
