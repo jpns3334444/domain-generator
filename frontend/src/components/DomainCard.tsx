@@ -26,9 +26,8 @@ export default function DomainCard({ domain, available, premium, premiumPrice, a
   const getButtonText = () => {
     if (available === null) return 'Searching...';
     if (error) return 'Error';
-    if (available && premium && premiumPrice) return `${formatPrice(premiumPrice)}`;
+    if (premium && premiumPrice) return `${formatPrice(premiumPrice)}`;
     if (available) return 'Register';
-    if (premium) return 'Premium';
     if (aftermarket) return 'Buy';
     return 'Taken';
   };
