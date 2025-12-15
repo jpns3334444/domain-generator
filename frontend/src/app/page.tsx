@@ -214,8 +214,10 @@ export default function Home() {
     setIsGenerating(false);
   }, [selectedTlds]);
 
-  // Handle Load More - show leftovers first, generate more when running low
+  // Handle Load More - show leftovers first, generate more when queue is low
   const handleLoadMore = useCallback(() => {
+    const queueIsLow = leftoverDomains.length < TARGET_DISPLAY;
+
     if (leftoverDomains.length > 0) {
       // Show from leftovers (already checked, available)
       const toShow = leftoverDomains.slice(0, TARGET_DISPLAY);
@@ -225,9 +227,9 @@ export default function Home() {
       setLeftoverDomains(remaining);
       console.log(`[Load More] Showing ${toShow.length} from leftovers, ${remaining.length} remaining`);
 
-      // If running low on leftovers, generate more in background
-      if (remaining.length < TARGET_DISPLAY && !isGenerating) {
-        console.log(`[Load More] Running low, generating more with prompt: "${lastPrompt}"`);
+      // If queue was low BEFORE showing, also generate more
+      if (queueIsLow && !isGenerating) {
+        console.log(`[Load More] Queue was low (${leftoverDomains.length}), generating more`);
         handleGenerate(lastPrompt, true);
       }
     } else {
