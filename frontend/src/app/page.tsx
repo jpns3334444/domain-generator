@@ -25,7 +25,7 @@ const DotLottiePlayer = dynamic(
 );
 
 const TARGET_DISPLAY = 15; // Number of available domains to display
-const GENERATE_COUNT = 100; // Generate 100 names per batch for better coverage
+const GENERATE_COUNT = 50; // Generate 50 names for single batch API request
 
 export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
