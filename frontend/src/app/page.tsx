@@ -57,7 +57,7 @@ export default function Home() {
       // Update the domain's status
       let updated = prev.map(d =>
         d.domain === result.domain
-          ? { ...d, available: result.available, premium: result.premium, aftermarket: result.aftermarket, error: result.error }
+          ? { ...d, available: result.available, premium: result.premium, premiumPrice: result.premiumPrice, aftermarket: result.aftermarket, error: result.error }
           : d
       );
 
