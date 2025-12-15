@@ -82,8 +82,8 @@ export default function Home() {
     });
   }, []);
 
-  const handleGenerate = useCallback(async (prompt: string, append: boolean = false) => {
-    console.log(`[Generate] === Generation Started ===`);
+  const handleGenerate = useCallback(async (prompt: string, append: boolean = false, alreadyShown: number = 0) => {
+    console.log(`[Generate] === Generation Started === (append: ${append}, alreadyShown: ${alreadyShown})`);
 
     setIsGenerating(true);
     setHasGenerated(true);
@@ -124,9 +124,13 @@ export default function Home() {
         setPrimaryDomain(allDomains[0]);
       }
 
-      // === PHASE 2: Show first 15 domains with pending status, rest in queue ===
-      const initialDomains = allDomains.slice(0, TARGET_DISPLAY);
-      const queueDomains = allDomains.slice(TARGET_DISPLAY);
+      // === PHASE 2: Show domains with pending status, rest in queue ===
+      // When appending, only show enough to complete the set of 15
+      const toShowCount = append ? Math.max(0, TARGET_DISPLAY - alreadyShown) : TARGET_DISPLAY;
+      const initialDomains = allDomains.slice(0, toShowCount);
+      const queueDomains = allDomains.slice(toShowCount);
+
+      console.log(`[Generate] alreadyShown: ${alreadyShown}, showing ${toShowCount} new domains`);
 
       const initialResults: DomainResult[] = initialDomains.map(domain => ({
         domain,
@@ -228,20 +232,22 @@ export default function Home() {
       // Show from leftovers (already checked, available)
       const toShow = leftoverDomains.slice(0, TARGET_DISPLAY);
       const remaining = leftoverDomains.slice(TARGET_DISPLAY);
+      const shownCount = toShow.length;
 
       setDomains((prev) => [...prev, ...toShow]);
       setLeftoverDomains(remaining);
-      console.log(`[Load More] Showing ${toShow.length} from leftovers, ${remaining.length} remaining`);
+      console.log(`[Load More] Showing ${shownCount} from leftovers, ${remaining.length} remaining`);
 
       // If queue was low BEFORE showing, also generate more
+      // Pass shownCount so generation only fills remaining slots to complete 15
       if (queueIsLow && !isGenerating) {
-        console.log(`[Load More] Queue was low (${leftoverDomains.length}), generating more`);
-        handleGenerate(lastPrompt, true);
+        console.log(`[Load More] Queue was low (${leftoverDomains.length}), generating more (alreadyShown: ${shownCount})`);
+        handleGenerate(lastPrompt, true, shownCount);
       }
     } else {
-      // No leftovers, generate more
+      // No leftovers, generate more (full 15)
       console.log(`[Load More] No leftovers, generating more with prompt: "${lastPrompt}"`);
-      handleGenerate(lastPrompt, true);
+      handleGenerate(lastPrompt, true, 0);
     }
   }, [leftoverDomains, lastPrompt, isGenerating, handleGenerate]);
 
