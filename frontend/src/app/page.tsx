@@ -6,7 +6,7 @@ import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
 import DomainList, { DomainResult } from '@/components/DomainList';
 import { generateDomainNames } from '@/lib/gemini';
-import { checkDomainsWithLimit } from '@/lib/whois';
+import { checkDomainsBatch, checkDomainsWithLimit } from '@/lib/whois';
 
 const DotLottiePlayer = dynamic(
   () => import('@dotlottie/react-player').then((mod) => mod.DotLottiePlayer),
@@ -41,6 +41,7 @@ export default function Home() {
   const [leftoverDomains, setLeftoverDomains] = useState<DomainResult[]>([]);
 
   // Update a domain's availability and maintain 15 visible
+  // Note: Premium info is now included in the availability check response
   const updateDomainStatus = useCallback((result: DomainResult) => {
     setDomains((prev) => {
       // Check if this domain is in our list
@@ -130,9 +131,35 @@ export default function Home() {
       pendingQueueRef.current = [...pendingQueueRef.current, ...queueDomains];
       console.log(`[Generate] Showing ${initialDomains.length} domains, ${queueDomains.length} in queue`);
 
-      // === PHASE 3: Start checking availability ===
-      checkDomainsWithLimit(initialDomains, updateDomainStatus);
-      checkDomainsWithLimit([...pendingQueueRef.current], updateDomainStatus);
+      // === PHASE 3: Start checking availability using batch API ===
+      // Check all domains in batches of 50 (Namecheap API limit)
+      const allDomainsToCheck = [...initialDomains, ...pendingQueueRef.current];
+      const BATCH_SIZE = 50;
+
+      // Process batches in parallel for speed
+      const batches: string[][] = [];
+      for (let i = 0; i < allDomainsToCheck.length; i += BATCH_SIZE) {
+        batches.push(allDomainsToCheck.slice(i, i + BATCH_SIZE));
+      }
+
+      console.log(`[Generate] Checking ${allDomainsToCheck.length} domains in ${batches.length} batches`);
+
+      // Run all batches in parallel
+      Promise.all(batches.map(async (batch) => {
+        try {
+          const results = await checkDomainsBatch(batch);
+          results.forEach(updateDomainStatus);
+        } catch (error) {
+          console.error('Batch check failed:', error);
+          batch.forEach(domain => {
+            updateDomainStatus({
+              domain,
+              available: false,
+              error: error instanceof Error ? error.message : 'Batch check failed',
+            });
+          });
+        }
+      }));
 
     } catch (error) {
       console.error('Generation failed:', error);
@@ -163,10 +190,21 @@ export default function Home() {
     // Create domain list for all selected TLDs
     const domainNames = selectedTlds.map((tld) => `${cleanName}.${tld}`);
 
-    // Check availability - show all results for search (no filtering)
-    await checkDomainsWithLimit(domainNames, (result) => {
-      setDomains((prev) => [...prev, result]);
-    });
+    // Show domains as pending first
+    setDomains(domainNames.map(domain => ({ domain, available: null })));
+
+    // Check availability using batch API
+    try {
+      const results = await checkDomainsBatch(domainNames);
+      setDomains(results);
+    } catch (error) {
+      console.error('Search failed:', error);
+      setDomains(domainNames.map(domain => ({
+        domain,
+        available: false,
+        error: error instanceof Error ? error.message : 'Check failed',
+      })));
+    }
 
     setIsGenerating(false);
   }, [selectedTlds]);

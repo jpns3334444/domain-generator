@@ -2,6 +2,7 @@ export interface WhoisResult {
   domain: string;
   available: boolean;
   premium?: boolean;
+  premiumPrice?: number;
   aftermarket?: boolean;
   status?: string;
   error?: string;

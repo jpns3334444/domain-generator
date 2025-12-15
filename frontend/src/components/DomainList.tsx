@@ -8,6 +8,7 @@ export interface DomainResult {
   domain: string;
   available: boolean | null;
   premium?: boolean;
+  premiumPrice?: number;
   aftermarket?: boolean;
   error?: string;
 }
@@ -39,6 +40,7 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
             domain={domain.domain}
             available={domain.available}
             premium={domain.premium}
+            premiumPrice={domain.premiumPrice}
             aftermarket={domain.aftermarket}
             error={domain.error}
           />
@@ -68,6 +70,7 @@ export default function DomainList({ domains, isLoading }: DomainListProps) {
                   domain={domain.domain}
                   available={domain.available}
                   premium={domain.premium}
+                  premiumPrice={domain.premiumPrice}
                   aftermarket={domain.aftermarket}
                   error={domain.error}
                 />
