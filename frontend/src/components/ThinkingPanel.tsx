@@ -59,22 +59,17 @@ export default function ThinkingPanel({
         {(isThinking || thinkingText) && (
           <div className={showFeedback ? 'mb-4' : ''}>
             <div className="flex items-center gap-2 mb-2">
-              <div className={`w-2 h-2 rounded-full bg-ids-red ${isThinking ? 'animate-pulse' : ''}`} />
+              {isThinking ? (
+                <GearSpinner size="sm" className="text-base" />
+              ) : (
+                <span className="text-amber-400 font-mono text-base">⚙</span>
+              )}
               <span className="text-zinc-400 text-sm font-medium">AI Interpretation</span>
             </div>
             <p className="text-zinc-300 text-sm leading-relaxed">
-              {thinkingText ? (
-                <>
-                  {thinkingText}
-                  {isThinking && (
-                    <span className="inline-block w-1.5 h-4 bg-ids-red ml-0.5 animate-pulse" />
-                  )}
-                </>
-              ) : (
-                <span className="inline-flex items-center gap-2">
-                  <GearSpinner size="sm" className="text-base" />
-                  <span>Analyzing your request...</span>
-                </span>
+              {thinkingText || 'Analyzing your request...'}
+              {isThinking && (
+                <span className="inline-block w-1.5 h-4 bg-amber-400 ml-0.5 animate-pulse" />
               )}
             </p>
           </div>

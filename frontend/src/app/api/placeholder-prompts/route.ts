@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 
-// Construct prompts URL from the WHOIS URL
-const WHOIS_URL = process.env.NEXT_PUBLIC_WHOIS_API_URL || '';
-const PROMPTS_API_URL = WHOIS_URL ? WHOIS_URL.replace('/whois', '/prompts') : '';
+// Get the prompts API URL - must be called inside handler, not at module level
+// Module-level env vars can be empty on cold starts in serverless environments
+function getPromptsApiUrl(): string {
+  const whoisUrl = process.env.NEXT_PUBLIC_WHOIS_API_URL || '';
+  // Strip /whois (and any suffix) then append /prompts
+  const baseUrl = whoisUrl.replace(/\/whois(\/.*)?$/, '');
+  return baseUrl ? `${baseUrl}/prompts` : '';
+}
 
 // Fallback prompts for when API is unavailable
 const FALLBACK_PROMPTS = [
@@ -29,10 +34,13 @@ const FALLBACK_PROMPTS = [
 ];
 
 export async function GET() {
+  // Get URL fresh on each request (not at module level)
+  const promptsApiUrl = getPromptsApiUrl();
+
   // Try the AWS Lambda endpoint first
-  if (PROMPTS_API_URL) {
+  if (promptsApiUrl) {
     try {
-      const response = await fetch(PROMPTS_API_URL, {
+      const response = await fetch(promptsApiUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
