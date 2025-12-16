@@ -140,11 +140,67 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
     }, 0);
   };
 
+  // Compact mode: single line for results page
+  if (compact) {
+    return (
+      <div className="w-full max-w-4xl">
+        <div className="bg-zinc-900 rounded-xl px-4 py-3 border border-zinc-800">
+          <div className="flex items-center gap-3">
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onFocus={handleInputFocus}
+              onKeyDown={handleKeyDown}
+              placeholder={mode === 'generate' ? placeholder : 'Enter domain name...'}
+              className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none caret-mauve min-w-0"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <div className="flex gap-1 shrink-0">
+              <button
+                onClick={() => handleModeChange('generate')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  mode === 'generate'
+                    ? 'bg-mauve text-white'
+                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                Generate
+              </button>
+              <button
+                onClick={() => handleModeChange('search')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  mode === 'search'
+                    ? 'bg-mauve text-white'
+                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
+                }`}
+              >
+                <Search className="w-4 h-4" />
+                Search
+              </button>
+            </div>
+            <button
+              onClick={handleSubmit}
+              disabled={isGenerating || (mode === 'search' && !inputValue.trim())}
+              className="shrink-0 shimmer-button bg-mauve hover:bg-mauve-hover disabled:bg-mauve-disabled disabled:cursor-not-allowed text-white px-5 py-1.5 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
+            >
+              <Sparkles className="w-4 h-4" />
+              {isGenerating ? 'Generating...' : 'Generate'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Landing page: original 2-line layout
   return (
-    <div className={`w-full ${compact ? 'max-w-4xl' : 'max-w-2xl mx-auto px-4'}`}>
-      <div className={`bg-zinc-900 rounded-xl ${compact ? 'px-4 py-3' : 'p-4'} border border-zinc-800`}>
-        {/* Single line: Input + Mode buttons + Action button */}
-        <div className="flex items-center gap-3">
+    <div className="w-full max-w-2xl mx-auto px-4">
+      <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
+        <div className="flex items-center gap-4 mb-4">
           <input
             ref={inputRef}
             type="text"
@@ -153,16 +209,16 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             onFocus={handleInputFocus}
             onKeyDown={handleKeyDown}
             placeholder={mode === 'generate' ? placeholder : 'Enter domain name...'}
-            className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none caret-mauve min-w-0"
+            className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none py-2 caret-mauve"
             autoComplete="off"
             spellCheck={false}
           />
-
-          {/* Mode buttons */}
-          <div className="flex gap-1 shrink-0">
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex gap-2">
             <button
               onClick={() => handleModeChange('generate')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 mode === 'generate'
                   ? 'bg-mauve text-white'
                   : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
@@ -173,7 +229,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             </button>
             <button
               onClick={() => handleModeChange('search')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 mode === 'search'
                   ? 'bg-mauve text-white'
                   : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
@@ -183,10 +239,8 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
               Search
             </button>
           </div>
-
-          {/* Action button */}
-          <div className="relative shrink-0">
-            {showTooltip && mode === 'generate' && !compact && (
+          <div className="relative">
+            {showTooltip && mode === 'generate' && (
               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-56 animate-fade-in z-10">
                 <div className="bg-zinc-800 text-zinc-300 text-sm p-3 rounded-lg shadow-lg border border-zinc-700">
                   <p>Click with no prompt to generate random domain names</p>
@@ -194,14 +248,22 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
                 </div>
               </div>
             )}
-
             <button
               onClick={handleSubmit}
               disabled={isGenerating || (mode === 'search' && !inputValue.trim())}
-              className="shimmer-button bg-mauve hover:bg-mauve-hover disabled:bg-mauve-disabled disabled:cursor-not-allowed text-white px-5 py-1.5 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
+              className="shimmer-button bg-mauve hover:bg-mauve-hover disabled:bg-mauve-disabled disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
             >
-              <Sparkles className="w-4 h-4" />
-              {isGenerating ? 'Generating...' : 'Generate'}
+              {mode === 'generate' ? (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  {isGenerating ? 'Generating...' : 'Generate'}
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4" />
+                  Search
+                </>
+              )}
             </button>
           </div>
         </div>
