@@ -19,14 +19,18 @@ export function getUserId(): string {
   return userId;
 }
 
-function getApiUrl(): string {
-  return process.env.NEXT_PUBLIC_WHOIS_API_URL || '';
+function getApiBaseUrl(): string {
+  // NEXT_PUBLIC_WHOIS_API_URL is like https://xxx.execute-api.../prod/whois
+  // We need the base URL without /whois for preferences endpoints
+  const whoisUrl = process.env.NEXT_PUBLIC_WHOIS_API_URL || '';
+  // Remove /whois or /whois/batch suffix to get base URL
+  return whoisUrl.replace(/\/whois(\/.*)?$/, '');
 }
 
 export async function saveDomain(domain: string): Promise<boolean> {
-  const apiUrl = getApiUrl();
+  const apiUrl = getApiBaseUrl();
   if (!apiUrl) {
-    console.warn('WHOIS API URL not configured');
+    console.warn('API URL not configured');
     return false;
   }
 
@@ -56,9 +60,9 @@ export async function saveDomain(domain: string): Promise<boolean> {
 }
 
 export async function getSavedDomains(): Promise<SavedDomain[]> {
-  const apiUrl = getApiUrl();
+  const apiUrl = getApiBaseUrl();
   if (!apiUrl) {
-    console.warn('WHOIS API URL not configured');
+    console.warn('API URL not configured');
     return [];
   }
 
@@ -87,9 +91,9 @@ export async function getSavedDomains(): Promise<SavedDomain[]> {
 }
 
 export async function removeDomain(domain: string): Promise<boolean> {
-  const apiUrl = getApiUrl();
+  const apiUrl = getApiBaseUrl();
   if (!apiUrl) {
-    console.warn('WHOIS API URL not configured');
+    console.warn('API URL not configured');
     return false;
   }
 
