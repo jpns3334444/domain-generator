@@ -7,6 +7,13 @@
   --mauve: #c50ed2;
   --mauve-hover: #d946ef;
   --mauve-disabled: #9333a8;
+  /* IDS-style colors */
+  --ids-cyan: #00d4ff;
+  --ids-cyan-hover: #00b8e6;
+  --ids-green: #22c55e;
+  --ids-green-hover: #16a34a;
+  --ids-red: #ef4444;
+  --ids-orange: #f59e0b;
 }
 
 @theme inline {
@@ -15,6 +22,12 @@
   --color-mauve: var(--mauve);
   --color-mauve-hover: var(--mauve-hover);
   --color-mauve-disabled: var(--mauve-disabled);
+  --color-ids-cyan: var(--ids-cyan);
+  --color-ids-cyan-hover: var(--ids-cyan-hover);
+  --color-ids-green: var(--ids-green);
+  --color-ids-green-hover: var(--ids-green-hover);
+  --color-ids-red: var(--ids-red);
+  --color-ids-orange: var(--ids-orange);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

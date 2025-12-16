@@ -256,7 +256,7 @@ export default function Home() {
           {/* Primary domain display */}
           {primaryDomain && !isGenerating && (
             <div className="max-w-6xl mx-auto px-4 mb-8">
-              <h2 className="text-4xl md:text-5xl font-bold text-mauve mb-4">
+              <h2 className="text-4xl md:text-5xl font-bold text-ids-red mb-4">
                 {primaryDomain}
               </h2>
               <div className="flex flex-wrap gap-2">

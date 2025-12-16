@@ -1,6 +1,6 @@
 'use client';
 
-import { Crown, Tag } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { formatPrice, getAffiliateUrl } from '@/lib/pricing';
 
 interface DomainCardProps {
@@ -13,58 +13,42 @@ interface DomainCardProps {
 }
 
 export default function DomainCard({ domain, available, premium, premiumPrice, aftermarket, error }: DomainCardProps) {
+  // IDS-style status dots: green for available, orange for taken, gray for searching
   const statusColor = available === null
-    ? 'bg-zinc-600' // Loading
+    ? 'bg-zinc-500' // Searching
     : available
-      ? premium
-        ? 'bg-amber-500' // Available but premium priced
-        : 'bg-mauve' // Available standard price
-      : premium || aftermarket
-        ? 'bg-amber-500' // Premium/Aftermarket (taken)
-        : 'bg-zinc-500'; // Taken
+      ? 'bg-ids-green' // Available
+      : 'bg-ids-orange'; // Taken
 
   const getButtonText = () => {
     if (available === null) return 'Searching...';
     if (error) return 'Error';
     if (available && premium && premiumPrice) return `${formatPrice(premiumPrice)}`;
-    if (available) return 'Register';
-    if (aftermarket) return 'Buy';
+    if (available) return 'Lookup';
+    if (aftermarket) return 'Make offer';
     return 'Taken';
   };
 
   const getButtonStyle = () => {
     if (available === null) return 'bg-zinc-700 text-zinc-400 cursor-wait';
     if (error) return 'bg-red-600/50 text-red-200 cursor-not-allowed';
-    if (available && premium) return 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer';
-    if (available) return 'bg-mauve hover:bg-mauve-hover text-white cursor-pointer';
-    if (premium || aftermarket) return 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer';
-    return 'bg-zinc-700 text-zinc-400 cursor-default';
+    if (available && premium) return 'bg-ids-green hover:bg-ids-green-hover text-white cursor-pointer';
+    if (available) return 'bg-ids-cyan hover:bg-ids-cyan-hover text-white cursor-pointer';
+    if (premium || aftermarket) return 'bg-ids-cyan hover:bg-ids-cyan-hover text-white cursor-pointer';
+    return 'bg-zinc-700 text-zinc-500 cursor-default';
   };
 
   const isClickable = available || premium || aftermarket;
-  const buttonClasses = `px-4 py-1.5 rounded text-sm font-medium transition-colors ${getButtonStyle()}`;
+  const showChevron = isClickable && !error && available !== null;
+  const buttonClasses = `flex items-center gap-1 px-3 py-1 rounded text-sm font-medium transition-colors ${getButtonStyle()}`;
 
   return (
-    <div className="flex items-center justify-between py-2 px-1 group">
-      <div className="flex items-center gap-3">
+    <div className="flex items-center justify-between py-1.5 px-1 group">
+      <div className="flex items-center gap-2.5">
         <div className={`w-2 h-2 rounded-full ${statusColor} ${available === null ? 'animate-pulse' : ''}`} />
-        <span className="text-zinc-300 group-hover:text-white transition-colors">
+        <span className="text-zinc-400 group-hover:text-white transition-colors">
           {domain}
         </span>
-        {/* Premium price badge - only show for available premium domains */}
-        {available && premium && premiumPrice && (
-          <span className="flex items-center gap-1 text-xs text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
-            <Crown className="w-3 h-3" />
-            Premium
-          </span>
-        )}
-        {/* Aftermarket badge */}
-        {aftermarket && !premium && (
-          <span className="flex items-center gap-1 text-xs text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
-            <Tag className="w-3 h-3" />
-            For Sale
-          </span>
-        )}
       </div>
       {isClickable && !error ? (
         <a
@@ -74,6 +58,7 @@ export default function DomainCard({ domain, available, premium, premiumPrice, a
           className={buttonClasses}
         >
           {getButtonText()}
+          {showChevron && <ChevronDown className="w-3.5 h-3.5 ml-0.5" />}
         </a>
       ) : (
         <button
