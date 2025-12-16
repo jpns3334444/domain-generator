@@ -26,7 +26,7 @@ const DotLottiePlayer = dynamic(
 
 const GENERATE_COUNT = 50; // Generate 50 names per batch
 const DOMAINS_PER_LOAD = 15; // Show 15 more domains per "Load More"
-const GENERATION_BUFFER = 15; // Generate more when reserve drops below this (roughly one Load More worth)
+const GENERATION_BUFFER = 0; // Generate more when reserve drops below this (roughly one Load More worth)
 
 export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
