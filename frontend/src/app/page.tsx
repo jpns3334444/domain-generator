@@ -225,12 +225,14 @@ export default function Home() {
     setHasGenerated(true);
     setThinkingText('');
 
+    // Always do a fresh load (clear existing domains)
+    setDomains([]);
+    setVisibleCount(DOMAINS_PER_LOAD);
+    setPrimaryDomain(null);
+
     if (!feedback) {
-      // New generation, not a refinement
+      // New generation - also reset prompt and conversation
       setLastPrompt(prompt);
-      setDomains([]);
-      setVisibleCount(DOMAINS_PER_LOAD);
-      setPrimaryDomain(null);
       setLikedDomains(new Set());
       setConversationHistory([]);
     }
@@ -260,7 +262,7 @@ export default function Home() {
             setDomains(prev => [...prev, { domain: fullDomain, available: null }]);
 
             // Set primary domain if this is the first one
-            if (!feedback && collectedNames.length === 1 && tld === selectedTlds[0]) {
+            if (collectedNames.length === 1 && tld === selectedTlds[0]) {
               setPrimaryDomain(fullDomain);
             }
           }

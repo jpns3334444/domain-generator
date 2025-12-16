@@ -129,11 +129,6 @@ export default function ThinkingPanel({
                 Refine
               </button>
             </div>
-
-            {/* Helper text */}
-            <p className="mt-2 text-xs text-zinc-500">
-              Describe what you want different, or click the heart on domains you like for context.
-            </p>
           </>
         )}
       </div>
