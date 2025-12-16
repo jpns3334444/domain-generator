@@ -140,57 +140,60 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
     }, 0);
   };
 
-  // Compact mode: single line for results page
+  // Compact mode: IDS-style with tabs below
   if (compact) {
     return (
-      <div className="w-full max-w-4xl">
-        <div className="bg-zinc-900 rounded-xl px-4 py-3 border border-zinc-800">
-          <div className="flex items-center gap-3">
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onFocus={handleInputFocus}
-              onKeyDown={handleKeyDown}
-              placeholder={mode === 'generate' ? placeholder : 'Enter domain name...'}
-              className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none caret-mauve min-w-0"
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <div className="flex gap-1 shrink-0">
-              <button
-                onClick={() => handleModeChange('generate')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  mode === 'generate'
-                    ? 'bg-mauve text-white'
-                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
-                }`}
-              >
-                <Sparkles className="w-4 h-4" />
-                Generate
-              </button>
-              <button
-                onClick={() => handleModeChange('search')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  mode === 'search'
-                    ? 'bg-mauve text-white'
-                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
-                }`}
-              >
-                <Search className="w-4 h-4" />
-                Search
-              </button>
-            </div>
-            <button
-              onClick={handleSubmit}
-              disabled={isGenerating || (mode === 'search' && !inputValue.trim())}
-              className="shrink-0 shimmer-button bg-mauve hover:bg-mauve-hover disabled:bg-mauve-disabled disabled:cursor-not-allowed text-white px-5 py-1.5 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
-            >
-              <Sparkles className="w-4 h-4" />
-              {isGenerating ? 'Generating...' : 'Generate'}
-            </button>
-          </div>
+      <div className="w-full max-w-3xl">
+        {/* Search input */}
+        <div className="bg-zinc-900 rounded-full px-5 py-3 border border-zinc-800 flex items-center">
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onFocus={handleInputFocus}
+            onKeyDown={handleKeyDown}
+            placeholder={mode === 'generate' ? placeholder : 'Enter domain name...'}
+            className="flex-1 bg-transparent text-white text-base placeholder-zinc-500 outline-none caret-mauve"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={isGenerating || (mode === 'search' && !inputValue.trim())}
+            className="text-zinc-400 hover:text-white transition-colors disabled:text-zinc-600"
+          >
+            {isGenerating ? (
+              <img src="/loading-computer.gif" alt="Loading" className="w-5 h-5" />
+            ) : (
+              <Search className="w-5 h-5" />
+            )}
+          </button>
+        </div>
+        {/* Tabs below */}
+        <div className="flex gap-6 mt-3 ml-2">
+          <button
+            onClick={() => handleModeChange('search')}
+            className={`flex items-center gap-2 text-sm font-medium transition-colors pb-1 ${
+              mode === 'search'
+                ? 'text-white border-b-2 border-white'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            <Search className="w-4 h-4" />
+            Search
+          </button>
+          <button
+            onClick={() => handleModeChange('generate')}
+            className={`flex items-center gap-2 text-sm font-medium transition-colors pb-1 ${
+              mode === 'generate'
+                ? 'text-white border-b-2 border-white'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            Generator
+          </button>
         </div>
       </div>
     );

@@ -236,7 +236,7 @@ export default function Home() {
             isGenerating={isGenerating}
             compact={true}
           />
-          <div className="mt-4">
+          <div className="mt-2 ml-2">
             <TldSelector
               selectedTlds={selectedTlds}
               onTldChange={setSelectedTlds}
