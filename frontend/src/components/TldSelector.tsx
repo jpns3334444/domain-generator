@@ -39,9 +39,34 @@ export default function TldSelector({ selectedTlds, onTldChange, compact = false
     onTldChange(AVAILABLE_TLDS.filter((t) => t.popular).map((t) => t.tld));
   };
 
+  // Compact mode: small buttons, no header
+  if (compact) {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {AVAILABLE_TLDS.map(({ tld, label }) => {
+          const isSelected = selectedTlds.includes(tld);
+          return (
+            <button
+              key={tld}
+              onClick={() => toggleTld(tld)}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                isSelected
+                  ? 'bg-mauve text-white'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Landing page: full layout with header
   return (
-    <div className={compact ? "w-full max-w-3xl" : "w-full max-w-2xl mx-auto px-4 mb-6"}>
-      <div className={`flex items-center ${compact ? 'gap-4' : 'justify-between'} mb-3`}>
+    <div className="w-full max-w-2xl mx-auto px-4 mb-6">
+      <div className="flex items-center justify-between mb-3">
         <span className="text-zinc-400 text-sm">Check extensions:</span>
         <div className="flex gap-2">
           <button

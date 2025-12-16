@@ -44,7 +44,7 @@ export default function DomainCard({ domain, available, premium, premiumPrice, a
     <div className="flex items-center justify-between py-1.5 px-1 group">
       <div className="flex items-center gap-2.5">
         <div className={`w-2 h-2 rounded-full ${statusColor} ${available === null ? 'animate-pulse' : ''}`} />
-        <span className="text-zinc-400 group-hover:text-white transition-colors">
+        <span className="text-white">
           {domain}
         </span>
       </div>

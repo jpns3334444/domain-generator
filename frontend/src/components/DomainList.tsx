@@ -27,7 +27,7 @@ export default function DomainList({ domains, unavailableDomains = [], isLoading
   }
 
   return (
-    <div className="w-full px-6">
+    <div className="w-full px-12">
       {/* Main domains grid - available and pending only */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-12 gap-y-0">
         {domains.map((domain) => (

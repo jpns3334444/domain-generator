@@ -229,20 +229,20 @@ export default function Home() {
 
       {/* Compact header - top left after generation */}
       {hasGenerated && (
-        <div className="px-6 pt-6 pb-4">
+        <div className="px-12 pt-6 pb-4">
           <SearchBar
             onGenerate={handleGenerate}
             onSearch={handleSearch}
             isGenerating={isGenerating}
             compact={true}
+            tldSelector={
+              <TldSelector
+                selectedTlds={selectedTlds}
+                onTldChange={setSelectedTlds}
+                compact={true}
+              />
+            }
           />
-          <div className="mt-2">
-            <TldSelector
-              selectedTlds={selectedTlds}
-              onTldChange={setSelectedTlds}
-              compact={true}
-            />
-          </div>
         </div>
       )}
 
@@ -251,7 +251,7 @@ export default function Home() {
         <div className="pb-12">
           {/* Loading state */}
           {domains.length === 0 && isGenerating && (
-            <div className="px-6 py-12">
+            <div className="px-12 py-12">
               <div className="inline-flex items-center gap-3 text-zinc-400">
                 <img src="/loading-computer.gif" alt="Loading" className="w-6 h-6" />
                 <span>Generating domain names with AI...</span>
@@ -261,7 +261,7 @@ export default function Home() {
 
           {/* Progress indicator while generating */}
           {isGenerating && domains.length > 0 && (
-            <div className="px-6 py-4">
+            <div className="px-12 py-4">
               <div className="inline-flex items-center gap-3 text-zinc-400">
                 <img src="/loading-computer.gif" alt="Loading" className="w-5 h-5" />
                 <span>Finding available domains...</span>
@@ -271,7 +271,7 @@ export default function Home() {
 
           {/* Primary domain display */}
           {primaryDomain && !isGenerating && (
-            <div className="px-6 mb-6">
+            <div className="px-12 mb-6">
               <h2 className="text-4xl md:text-5xl font-bold text-ids-red mb-4">
                 {primaryDomain}
               </h2>

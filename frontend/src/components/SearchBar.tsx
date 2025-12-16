@@ -8,6 +8,7 @@ interface SearchBarProps {
   onSearch: (baseName: string) => void;
   isGenerating: boolean;
   compact?: boolean;
+  tldSelector?: React.ReactNode;
 }
 
 type Mode = 'generate' | 'search';
@@ -17,7 +18,7 @@ const DELETING_SPEED = 80; // Slower deletion
 const PAUSE_BEFORE_DELETE = 3000; // 3 seconds
 const PAUSE_BEFORE_TYPE = 300;
 
-export default function SearchBar({ onGenerate, onSearch, isGenerating, compact = false }: SearchBarProps) {
+export default function SearchBar({ onGenerate, onSearch, isGenerating, compact = false, tldSelector }: SearchBarProps) {
   const [mode, setMode] = useState<Mode>('generate');
   const [inputValue, setInputValue] = useState('');
   const [placeholder, setPlaceholder] = useState('');
@@ -170,30 +171,33 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             )}
           </button>
         </div>
-        {/* Tabs below */}
-        <div className="flex gap-6 mt-3 ml-2">
-          <button
-            onClick={() => handleModeChange('search')}
-            className={`flex items-center gap-2 text-sm font-medium transition-colors pb-1 ${
-              mode === 'search'
-                ? 'text-white border-b-2 border-white'
-                : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-          >
-            <Search className="w-4 h-4" />
-            Search
-          </button>
-          <button
-            onClick={() => handleModeChange('generate')}
-            className={`flex items-center gap-2 text-sm font-medium transition-colors pb-1 ${
-              mode === 'generate'
-                ? 'text-white border-b-2 border-white'
-                : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" />
-            Generator
-          </button>
+        {/* Tabs and TLD selector row */}
+        <div className="flex items-center justify-between mt-3">
+          <div className="flex gap-6">
+            <button
+              onClick={() => handleModeChange('search')}
+              className={`flex items-center gap-2 text-sm font-medium transition-colors pb-1 ${
+                mode === 'search'
+                  ? 'text-white border-b-2 border-white'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              <Search className="w-4 h-4" />
+              Search
+            </button>
+            <button
+              onClick={() => handleModeChange('generate')}
+              className={`flex items-center gap-2 text-sm font-medium transition-colors pb-1 ${
+                mode === 'generate'
+                  ? 'text-white border-b-2 border-white'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              Generator
+            </button>
+          </div>
+          {tldSelector}
         </div>
       </div>
     );
