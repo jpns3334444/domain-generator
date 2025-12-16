@@ -1,6 +1,5 @@
 'use client';
 
-import { ChevronDown } from 'lucide-react';
 import { formatPrice, getAffiliateUrl } from '@/lib/pricing';
 
 interface DomainCardProps {
@@ -24,23 +23,22 @@ export default function DomainCard({ domain, available, premium, premiumPrice, a
     if (available === null) return 'Searching...';
     if (error) return 'Error';
     if (available && premium && premiumPrice) return `${formatPrice(premiumPrice)}`;
-    if (available) return 'Lookup';
+    if (available) return 'Continue';
     if (aftermarket) return 'Make offer';
     return 'Taken';
   };
 
   const getButtonStyle = () => {
-    if (available === null) return 'text-zinc-500 cursor-wait';
-    if (error) return 'text-red-400 cursor-not-allowed';
-    if (available && premium) return 'text-ids-green hover:text-ids-green-hover cursor-pointer';
-    if (available) return 'text-ids-cyan hover:text-ids-cyan-hover cursor-pointer';
-    if (premium || aftermarket) return 'text-ids-cyan hover:text-ids-cyan-hover cursor-pointer';
-    return 'text-zinc-600 cursor-default';
+    if (available === null) return 'bg-zinc-800 text-zinc-500 cursor-wait';
+    if (error) return 'bg-zinc-800 text-red-400 cursor-not-allowed';
+    if (available && premium) return 'bg-zinc-700 hover:bg-zinc-600 text-ids-green cursor-pointer';
+    if (available) return 'bg-zinc-700 hover:bg-zinc-600 text-ids-green cursor-pointer';
+    if (premium || aftermarket) return 'bg-zinc-700 hover:bg-zinc-600 text-ids-cyan cursor-pointer';
+    return 'bg-zinc-800 text-zinc-600 cursor-default';
   };
 
   const isClickable = available || premium || aftermarket;
-  const showChevron = isClickable && !error && available !== null;
-  const buttonClasses = `flex items-center gap-0.5 text-sm font-medium transition-colors ${getButtonStyle()}`;
+  const buttonClasses = `px-3 py-1 rounded text-sm font-medium transition-colors ${getButtonStyle()}`;
 
   return (
     <div className="flex items-center justify-between py-1.5 px-1 group">
@@ -58,7 +56,6 @@ export default function DomainCard({ domain, available, premium, premiumPrice, a
           className={buttonClasses}
         >
           {getButtonText()}
-          {showChevron && <ChevronDown className="w-3.5 h-3.5 ml-0.5" />}
         </a>
       ) : (
         <button
