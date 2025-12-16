@@ -31,14 +31,14 @@ export default function DomainCard({ domain, available, premium, premiumPrice, a
   const getButtonStyle = () => {
     if (available === null) return 'bg-zinc-800 text-zinc-500 cursor-wait';
     if (error) return 'bg-zinc-800 text-red-400 cursor-not-allowed';
-    if (available && premium) return 'bg-zinc-700 hover:bg-zinc-600 text-ids-green cursor-pointer';
-    if (available) return 'bg-zinc-700 hover:bg-zinc-600 text-ids-green cursor-pointer';
-    if (premium || aftermarket) return 'bg-zinc-700 hover:bg-zinc-600 text-ids-cyan cursor-pointer';
+    if (available && premium) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-green cursor-pointer';
+    if (available) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-green cursor-pointer';
+    if (premium || aftermarket) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-cyan cursor-pointer';
     return 'bg-zinc-800 text-zinc-600 cursor-default';
   };
 
   const isClickable = available || premium || aftermarket;
-  const buttonClasses = `px-3 py-1 rounded text-sm font-medium transition-colors ${getButtonStyle()}`;
+  const buttonClasses = `px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${getButtonStyle()}`;
 
   return (
     <div className="flex items-center justify-between py-1.5 px-1 group">
