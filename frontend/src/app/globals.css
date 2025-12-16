@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #000000;
+  --background: #18181B;
   --foreground: #ffffff;
   /* Primary brand color */
-  --mauve: #EF4444;
-  --mauve-hover: #EF4444;
-  --mauve-disabled: #991111;
+  --mauve: #d97706;
+  --mauve-hover: #b45309;
+  --mauve-disabled: #78350f;
   /* IDS-style colors */
   --ids-cyan: #00d4ff;
   --ids-cyan-hover: #00b8e6;
@@ -14,6 +14,8 @@
   --ids-green-hover: #16a34a;
   --ids-red: #ef4444;
   --ids-orange: #f59e0b;
+  /* Loading accent */
+  --loading: #fbbf24; /* amber-400 */
 }
 
 @theme inline {
@@ -28,6 +30,7 @@
   --color-ids-green-hover: var(--ids-green-hover);
   --color-ids-red: var(--ids-red);
   --color-ids-orange: var(--ids-orange);
+  --color-loading: var(--loading);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

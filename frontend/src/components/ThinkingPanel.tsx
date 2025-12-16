@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import GearSpinner from './GearSpinner';
 
 interface ThinkingPanelProps {
   thinkingText: string;
@@ -62,9 +63,18 @@ export default function ThinkingPanel({
               <span className="text-zinc-400 text-sm font-medium">AI Interpretation</span>
             </div>
             <p className="text-zinc-300 text-sm leading-relaxed">
-              {thinkingText || 'Analyzing your request...'}
-              {isThinking && (
-                <span className="inline-block w-1.5 h-4 bg-ids-red ml-0.5 animate-pulse" />
+              {thinkingText ? (
+                <>
+                  {thinkingText}
+                  {isThinking && (
+                    <span className="inline-block w-1.5 h-4 bg-ids-red ml-0.5 animate-pulse" />
+                  )}
+                </>
+              ) : (
+                <span className="inline-flex items-center gap-2">
+                  <GearSpinner size="sm" className="text-base" />
+                  <span>Analyzing your request...</span>
+                </span>
               )}
             </p>
           </div>

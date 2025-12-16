@@ -28,7 +28,7 @@ export default function RootLayout({
         <link rel="preload" href="/animation.lottie" as="fetch" crossOrigin="anonymous" />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background min-h-screen`}
       >
         {children}
       </body>

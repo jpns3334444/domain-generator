@@ -26,14 +26,14 @@ export default function DomainCard({
   isSaved = false,
   showSaveButton = false,
 }: DomainCardProps) {
-  // IDS-style status dots: green for available, orange for taken, gray for searching
+  // IDS-style status dots: green for available, orange for taken, amber for searching
   const statusColor = available === null
-    ? 'bg-zinc-500' // Searching
+    ? 'bg-amber-400' // Searching
     : available
       ? 'bg-ids-green' // Available
       : 'bg-ids-orange'; // Taken
 
-  const getButtonText = () => {
+  const getButtonContent = () => {
     if (available === null) return 'Searching...';
     if (error) return 'Error';
     if (available && premium && premiumPrice) return `${formatPrice(premiumPrice)}`;
@@ -91,14 +91,14 @@ export default function DomainCard({
             rel="noopener noreferrer"
             className={buttonClasses}
           >
-            {getButtonText()}
+            {getButtonContent()}
           </a>
         ) : (
           <button
             className={buttonClasses}
             disabled={available === null || (!available && !premium && !aftermarket)}
           >
-            {getButtonText()}
+            {getButtonContent()}
           </button>
         )}
       </div>

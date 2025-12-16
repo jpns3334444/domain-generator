@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Sparkles, Search } from 'lucide-react';
+import GearSpinner from './GearSpinner';
 
 interface SearchBarProps {
   onGenerate: (prompt: string) => void;
@@ -165,7 +166,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             className="text-zinc-400 hover:text-white transition-colors disabled:text-zinc-600"
           >
             {isGenerating ? (
-              <img src="/loading-computer.gif" alt="Loading" className="w-5 h-5" />
+              <GearSpinner size="sm" className="text-xl" />
             ) : (
               <Search className="w-5 h-5" />
             )}
@@ -261,10 +262,17 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
               className="shimmer-button bg-mauve hover:bg-mauve-hover disabled:bg-mauve-disabled disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
             >
               {mode === 'generate' ? (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  {isGenerating ? 'Generating...' : 'Generate'}
-                </>
+                isGenerating ? (
+                  <>
+                    <GearSpinner size="sm" className="text-lg" />
+                    Generating
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    Generate
+                  </>
+                )
               ) : (
                 <>
                   <Search className="w-4 h-4" />
