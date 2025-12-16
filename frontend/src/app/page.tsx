@@ -26,7 +26,7 @@ const DotLottiePlayer = dynamic(
 
 const GENERATE_COUNT = 50; // Generate 50 names per batch
 const DOMAINS_PER_LOAD = 15; // Show 15 more domains per "Load More"
-const GENERATION_BUFFER = 30; // Generate more when available+pending drops below this
+const GENERATION_BUFFER = 15; // Generate more when reserve drops below this (roughly one Load More worth)
 
 export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -87,15 +87,26 @@ export default function Home() {
 
         try {
           const results = await checkDomainsBatch(batch);
+          const availableCount = results.filter(r => r.available === true).length;
+          const unavailableCount = results.filter(r => r.available === false).length;
+          console.log(`[Batch ${Math.floor(i / BATCH_SIZE) + 1}] Checked ${batch.length}: ${availableCount} available, ${unavailableCount} unavailable`);
 
           // Update domain statuses in state
-          setDomains(prev => prev.map(d => {
-            const result = results.find(r => r.domain === d.domain);
-            if (result) {
-              return { ...d, ...result };
-            }
-            return d;
-          }));
+          setDomains(prev => {
+            const updated = prev.map(d => {
+              const result = results.find(r => r.domain === d.domain);
+              if (result) {
+                return { ...d, ...result };
+              }
+              return d;
+            });
+            // Log current totals
+            const totalAvailable = updated.filter(d => d.available === true).length;
+            const totalPending = updated.filter(d => d.available === null).length;
+            const totalUnavailable = updated.filter(d => d.available === false).length;
+            console.log(`[State] Total: ${totalAvailable} available, ${totalPending} pending, ${totalUnavailable} unavailable`);
+            return updated;
+          });
         } catch (error) {
           console.error('Batch check failed:', error);
           // Mark batch as errored
@@ -165,15 +176,20 @@ export default function Home() {
   const handleLoadMore = useCallback(() => {
     const newVisibleCount = visibleCount + DOMAINS_PER_LOAD;
     setVisibleCount(newVisibleCount);
-    console.log(`[Load More] Increased visible count to ${newVisibleCount}`);
 
-    // Check if we need to generate more domains
-    // If available+pending after this load would be below buffer, generate more
-    if (availableOrPending.length < newVisibleCount + GENERATION_BUFFER && !isGenerating && lastPrompt) {
-      console.log(`[Load More] Running low (${availableOrPending.length} available+pending), generating more...`);
+    // Calculate reserve (what's left after showing)
+    const reserve = availableOrPending.length - newVisibleCount;
+    const showing = Math.min(newVisibleCount, availableOrPending.length);
+    const hidden = Math.max(0, availableOrPending.length - newVisibleCount);
+
+    console.log(`[Load More] visibleCount: ${newVisibleCount}, showing: ${showing}, hidden: ${hidden}, unavailable: ${unavailableDomains.length}, reserve: ${reserve}`);
+
+    // Only generate more if reserve drops below buffer
+    if (reserve < GENERATION_BUFFER && !isGenerating && lastPrompt) {
+      console.log(`[Load More] Reserve (${reserve}) < buffer (${GENERATION_BUFFER}), generating more...`);
       handleGenerate(lastPrompt, true);
     }
-  }, [visibleCount, availableOrPending.length, isGenerating, lastPrompt, handleGenerate]);
+  }, [visibleCount, availableOrPending.length, unavailableDomains.length, isGenerating, lastPrompt, handleGenerate]);
 
   return (
     <div className="min-h-screen bg-black">
