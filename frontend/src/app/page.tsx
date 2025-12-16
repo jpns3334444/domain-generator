@@ -42,10 +42,9 @@ export default function Home() {
   const [lastPrompt, setLastPrompt] = useState<string>('');
   const [visibleCount, setVisibleCount] = useState(DOMAINS_PER_LOAD); // How many available+pending to show
 
-  // Thinking/Streaming state
+  // Thinking state
   const [thinkingText, setThinkingText] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [streamingNames, setStreamingNames] = useState<string[]>([]);
 
   // Feedback/Steering state
   const [feedbackInput, setFeedbackInput] = useState('');
@@ -226,7 +225,6 @@ export default function Home() {
     setIsThinking(true);
     setHasGenerated(true);
     setThinkingText('');
-    setStreamingNames([]);
 
     if (!feedback) {
       // New generation, not a refinement
@@ -253,7 +251,6 @@ export default function Home() {
           setThinkingText(event.content || '');
         } else if (event.type === 'domain' && event.name) {
           collectedNames.push(event.name);
-          setStreamingNames([...collectedNames]);
 
           // Create domain entries for all TLDs
           for (const tld of selectedTlds) {
@@ -433,32 +430,11 @@ export default function Home() {
       {/* Results Section */}
       {hasGenerated && (
         <div className="pb-12">
-          {/* Loading state */}
-          {domains.length === 0 && isGenerating && (
-            <div className="px-12 py-12">
-              <div className="inline-flex items-center gap-3 text-zinc-400">
-                <img src="/loading-computer.gif" alt="Loading" className="w-6 h-6" />
-                <span>Generating domain names with AI...</span>
-              </div>
-            </div>
-          )}
-
-          {/* Progress indicator while generating */}
-          {isGenerating && domains.length > 0 && (
-            <div className="px-12 py-4">
-              <div className="inline-flex items-center gap-3 text-zinc-400">
-                <img src="/loading-computer.gif" alt="Loading" className="w-5 h-5" />
-                <span>Finding available domains...</span>
-              </div>
-            </div>
-          )}
-
-          {/* Thinking Panel - shows AI interpretation and streaming names */}
-          {(isThinking || thinkingText || streamingNames.length > 0 || (primaryDomain && !isGenerating)) && (
+          {/* Thinking Panel - shows AI interpretation */}
+          {(isThinking || thinkingText || primaryDomain) && (
             <ThinkingPanel
               thinkingText={thinkingText}
               isThinking={isThinking}
-              streamingNames={streamingNames}
               primaryDomain={primaryDomain}
             />
           )}
