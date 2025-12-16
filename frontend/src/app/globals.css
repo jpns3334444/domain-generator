@@ -3,10 +3,10 @@
 :root {
   --background: #000000;
   --foreground: #ffffff;
-  /* Custom neon purple */
-  --mauve: #c50ed2;
-  --mauve-hover: #d946ef;
-  --mauve-disabled: #9333a8;
+  /* Primary brand color */
+  --mauve: #DC0000;
+  --mauve-hover: #ff2222;
+  --mauve-disabled: #991111;
   /* IDS-style colors */
   --ids-cyan: #00d4ff;
   --ids-cyan-hover: #00b8e6;
