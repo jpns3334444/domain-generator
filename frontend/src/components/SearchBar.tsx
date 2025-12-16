@@ -141,10 +141,10 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
   };
 
   return (
-    <div className={`w-full max-w-2xl mx-auto ${compact ? '' : 'px-4'}`}>
-      <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
-        {/* Search Input */}
-        <div className="flex items-center gap-4 mb-4">
+    <div className={`w-full ${compact ? 'max-w-4xl' : 'max-w-2xl mx-auto px-4'}`}>
+      <div className={`bg-zinc-900 rounded-xl ${compact ? 'px-4 py-3' : 'p-4'} border border-zinc-800`}>
+        {/* Single line: Input + Mode buttons + Action button */}
+        <div className="flex items-center gap-3">
           <input
             ref={inputRef}
             type="text"
@@ -153,18 +153,16 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             onFocus={handleInputFocus}
             onKeyDown={handleKeyDown}
             placeholder={mode === 'generate' ? placeholder : 'Enter domain name...'}
-            className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none py-2 caret-mauve"
+            className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none caret-mauve min-w-0"
             autoComplete="off"
             spellCheck={false}
           />
-        </div>
 
-        {/* Mode buttons and action */}
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2">
+          {/* Mode buttons */}
+          <div className="flex gap-1 shrink-0">
             <button
               onClick={() => handleModeChange('generate')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 mode === 'generate'
                   ? 'bg-mauve text-white'
                   : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
@@ -175,7 +173,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             </button>
             <button
               onClick={() => handleModeChange('search')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 mode === 'search'
                   ? 'bg-mauve text-white'
                   : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
@@ -186,11 +184,10 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             </button>
           </div>
 
-          {/* Action button with tooltip */}
-          <div className="relative">
-            {/* Tooltip - positioned to the right of the button */}
-            {showTooltip && mode === 'generate' && (
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-56 animate-fade-in">
+          {/* Action button */}
+          <div className="relative shrink-0">
+            {showTooltip && mode === 'generate' && !compact && (
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-56 animate-fade-in z-10">
                 <div className="bg-zinc-800 text-zinc-300 text-sm p-3 rounded-lg shadow-lg border border-zinc-700">
                   <p>Click with no prompt to generate random domain names</p>
                   <div className="absolute top-1/2 -translate-y-1/2 -left-2 w-0 h-0 border-t-8 border-b-8 border-r-8 border-t-transparent border-b-transparent border-r-zinc-800" />
@@ -201,19 +198,10 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             <button
               onClick={handleSubmit}
               disabled={isGenerating || (mode === 'search' && !inputValue.trim())}
-              className="shimmer-button bg-mauve hover:bg-mauve-hover disabled:bg-mauve-disabled disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
+              className="shimmer-button bg-mauve hover:bg-mauve-hover disabled:bg-mauve-disabled disabled:cursor-not-allowed text-white px-5 py-1.5 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
             >
-              {mode === 'generate' ? (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  {isGenerating ? 'Generating...' : 'Generate'}
-                </>
-              ) : (
-                <>
-                  <Search className="w-4 h-4" />
-                  Search
-                </>
-              )}
+              <Sparkles className="w-4 h-4" />
+              {isGenerating ? 'Generating...' : 'Generate'}
             </button>
           </div>
         </div>

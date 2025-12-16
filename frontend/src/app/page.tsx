@@ -194,48 +194,63 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-black">
       <span className="hidden">Impact-Site-Verification: 664bdf39-f63c-4758-82b9-3a5adfcc8ca0</span>
-      {/* Hero Section */}
-      <div className={`flex flex-col items-center justify-center ${hasGenerated ? 'pt-8 pb-4' : 'min-h-screen'}`}>
-        {!hasGenerated && (
-          <>
-            <div className="w-96 h-96 -mb-32">
-              <DotLottiePlayer
-                src="/animation.lottie"
-                autoplay
-                loop
-              />
-            </div>
-            <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 text-center">
-              Generate Domain Names
-            </h1>
-            <p className="text-zinc-400 text-lg md:text-xl text-center max-w-2xl mb-12 px-4">
-              Create unique domain names with AI. Describe your business or generate random names,
-              then instantly check availability.
-            </p>
-          </>
-        )}
 
-        <SearchBar
-          onGenerate={handleGenerate}
-          onSearch={handleSearch}
-          isGenerating={isGenerating}
-          compact={hasGenerated}
-        />
-
-        <div className="mt-6">
-          <TldSelector
-            selectedTlds={selectedTlds}
-            onTldChange={setSelectedTlds}
+      {/* Hero Section - centered before generation */}
+      {!hasGenerated && (
+        <div className="flex flex-col items-center justify-center min-h-screen">
+          <div className="w-96 h-96 -mb-32">
+            <DotLottiePlayer
+              src="/animation.lottie"
+              autoplay
+              loop
+            />
+          </div>
+          <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 text-center">
+            Generate Domain Names
+          </h1>
+          <p className="text-zinc-400 text-lg md:text-xl text-center max-w-2xl mb-12 px-4">
+            Create unique domain names with AI. Describe your business or generate random names,
+            then instantly check availability.
+          </p>
+          <SearchBar
+            onGenerate={handleGenerate}
+            onSearch={handleSearch}
+            isGenerating={isGenerating}
+            compact={false}
           />
+          <div className="mt-6">
+            <TldSelector
+              selectedTlds={selectedTlds}
+              onTldChange={setSelectedTlds}
+            />
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Compact header - top left after generation */}
+      {hasGenerated && (
+        <div className="px-6 pt-6 pb-4">
+          <SearchBar
+            onGenerate={handleGenerate}
+            onSearch={handleSearch}
+            isGenerating={isGenerating}
+            compact={true}
+          />
+          <div className="mt-4">
+            <TldSelector
+              selectedTlds={selectedTlds}
+              onTldChange={setSelectedTlds}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Results Section */}
       {hasGenerated && (
         <div className="pb-12">
           {/* Loading state */}
           {domains.length === 0 && isGenerating && (
-            <div className="text-center py-12">
+            <div className="px-6 py-12">
               <div className="inline-flex items-center gap-3 text-zinc-400">
                 <img src="/loading-computer.gif" alt="Loading" className="w-6 h-6" />
                 <span>Generating domain names with AI...</span>
@@ -245,7 +260,7 @@ export default function Home() {
 
           {/* Progress indicator while generating */}
           {isGenerating && domains.length > 0 && (
-            <div className="text-center py-4">
+            <div className="px-6 py-4">
               <div className="inline-flex items-center gap-3 text-zinc-400">
                 <img src="/loading-computer.gif" alt="Loading" className="w-5 h-5" />
                 <span>Finding available domains...</span>
@@ -255,7 +270,7 @@ export default function Home() {
 
           {/* Primary domain display */}
           {primaryDomain && !isGenerating && (
-            <div className="max-w-6xl mx-auto px-4 mb-8">
+            <div className="px-6 mb-6">
               <h2 className="text-4xl md:text-5xl font-bold text-ids-red mb-4">
                 {primaryDomain}
               </h2>

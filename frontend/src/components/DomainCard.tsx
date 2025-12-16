@@ -30,17 +30,17 @@ export default function DomainCard({ domain, available, premium, premiumPrice, a
   };
 
   const getButtonStyle = () => {
-    if (available === null) return 'bg-zinc-700 text-zinc-400 cursor-wait';
-    if (error) return 'bg-red-600/50 text-red-200 cursor-not-allowed';
-    if (available && premium) return 'bg-ids-green hover:bg-ids-green-hover text-white cursor-pointer';
-    if (available) return 'bg-ids-cyan hover:bg-ids-cyan-hover text-white cursor-pointer';
-    if (premium || aftermarket) return 'bg-ids-cyan hover:bg-ids-cyan-hover text-white cursor-pointer';
-    return 'bg-zinc-700 text-zinc-500 cursor-default';
+    if (available === null) return 'text-zinc-500 cursor-wait';
+    if (error) return 'text-red-400 cursor-not-allowed';
+    if (available && premium) return 'text-ids-green hover:text-ids-green-hover cursor-pointer';
+    if (available) return 'text-ids-cyan hover:text-ids-cyan-hover cursor-pointer';
+    if (premium || aftermarket) return 'text-ids-cyan hover:text-ids-cyan-hover cursor-pointer';
+    return 'text-zinc-600 cursor-default';
   };
 
   const isClickable = available || premium || aftermarket;
   const showChevron = isClickable && !error && available !== null;
-  const buttonClasses = `flex items-center gap-1 px-3 py-1 rounded text-sm font-medium transition-colors ${getButtonStyle()}`;
+  const buttonClasses = `flex items-center gap-0.5 text-sm font-medium transition-colors ${getButtonStyle()}`;
 
   return (
     <div className="flex items-center justify-between py-1.5 px-1 group">
