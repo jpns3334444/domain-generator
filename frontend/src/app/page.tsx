@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
 import DomainList, { DomainResult } from '@/components/DomainList';
 import { generateDomainNames } from '@/lib/gemini';
-import { checkDomainsBatch, checkDomainsWithLimit } from '@/lib/whois';
+import { checkDomainsBatch } from '@/lib/whois';
 
 const DotLottiePlayer = dynamic(
   () => import('@dotlottie/react-player').then((mod) => mod.DotLottiePlayer),
@@ -24,157 +24,89 @@ const DotLottiePlayer = dynamic(
   }
 );
 
-const TARGET_DISPLAY = 15; // Number of available domains to display
-const GENERATE_COUNT = 50; // Generate 50 names for single batch API request
+const GENERATE_COUNT = 50; // Generate 50 names per batch
+const DOMAINS_PER_LOAD = 15; // Show 15 more domains per "Load More"
+const GENERATION_BUFFER = 30; // Generate more when available+pending drops below this
 
 export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [domains, setDomains] = useState<DomainResult[]>([]);
+  const [domains, setDomains] = useState<DomainResult[]>([]); // ALL domains, flat array
   const [selectedTlds, setSelectedTlds] = useState<string[]>(['com']);
   const [hasGenerated, setHasGenerated] = useState(false);
   const [primaryDomain, setPrimaryDomain] = useState<string | null>(null);
   const [lastPrompt, setLastPrompt] = useState<string>('');
+  const [visibleCount, setVisibleCount] = useState(DOMAINS_PER_LOAD); // How many available+pending to show
 
-  // Queue of domain names waiting to be shown
-  const pendingQueueRef = useRef<string[]>([]);
-  // Store available domains found beyond the 15 shown (for Load More)
-  const [leftoverDomains, setLeftoverDomains] = useState<DomainResult[]>([]);
-
-  // Update a domain's availability and maintain 15 visible
-  // Note: Premium info is now included in the availability check response
-  const updateDomainStatus = useCallback((result: DomainResult) => {
-    setDomains((prev) => {
-      // Check if this domain is in our list
-      const exists = prev.some(d => d.domain === result.domain);
-      if (!exists) {
-        // Queue item found available - check if we need to fill display first
-        if (result.available === true) {
-          const visibleCount = prev.filter(d => d.available === true || d.available === null).length;
-          if (visibleCount < TARGET_DISPLAY) {
-            // Fill the display slot
-            return [...prev, result];
-          }
-          // Display is full, store as leftover
-          setLeftoverDomains((l) => [...l, result]);
-        }
-        return prev;
-      }
-
-      // Update the domain's status
-      let updated = prev.map(d =>
-        d.domain === result.domain
-          ? { ...d, available: result.available, premium: result.premium, premiumPrice: result.premiumPrice, aftermarket: result.aftermarket, error: result.error }
-          : d
-      );
-
-      // If unavailable, add replacement to maintain 15 visible
-      if (result.available === false) {
-        const visibleCount = updated.filter(d => d.available === true || d.available === null).length;
-        if (visibleCount < TARGET_DISPLAY && pendingQueueRef.current.length > 0) {
-          const nextDomain = pendingQueueRef.current.shift()!;
-          updated = [...updated, { domain: nextDomain, available: null }];
-          // Check the new domain
-          checkDomainsWithLimit([nextDomain], updateDomainStatus);
-        }
-      }
-
-      return updated;
-    });
-  }, []);
-
-  const handleGenerate = useCallback(async (prompt: string, append: boolean = false, alreadyShown: number = 0) => {
-    console.log(`[Generate] === Generation Started === (append: ${append}, alreadyShown: ${alreadyShown})`);
+  const handleGenerate = useCallback(async (prompt: string, append: boolean = false) => {
+    console.log(`[Generate] === Generation Started === (append: ${append})`);
 
     setIsGenerating(true);
     setHasGenerated(true);
 
-    // Store the prompt for "Load More" functionality (only on fresh generation)
     if (!append) {
       setLastPrompt(prompt);
       setDomains([]);
+      setVisibleCount(DOMAINS_PER_LOAD);
       setPrimaryDomain(null);
-      pendingQueueRef.current = [];
-      setLeftoverDomains([]);
     }
 
-    // Use stored prompt when appending, otherwise use provided prompt
     const activePrompt = append ? lastPrompt : prompt;
 
-    // Clear pending queue when generating more (avoid accumulation)
-    if (append) {
-      pendingQueueRef.current = [];
-    }
-
     try {
-      // === PHASE 1: Generate 100 domain names with Gemini ===
+      // Generate domain names with Gemini
       console.log(`[Generate] Starting Gemini generation...`);
       const names = await generateDomainNames(GENERATE_COUNT, activePrompt);
       console.log(`[Generate] Got ${names.length} names`);
 
       // Create domain list with all TLD combinations
-      const allDomains: string[] = [];
+      const newDomains: DomainResult[] = [];
       for (const name of names) {
         for (const tld of selectedTlds) {
-          allDomains.push(`${name}.${tld}`);
+          newDomains.push({
+            domain: `${name}.${tld}`,
+            available: null, // pending
+          });
         }
       }
 
       // Set primary domain from first name
-      if (!append && allDomains.length > 0) {
-        setPrimaryDomain(allDomains[0]);
+      if (!append && newDomains.length > 0) {
+        setPrimaryDomain(newDomains[0].domain);
       }
 
-      // === PHASE 2: Show domains with pending status, rest in queue ===
-      // When appending, only show enough to complete the set of 15
-      const toShowCount = append ? Math.max(0, TARGET_DISPLAY - alreadyShown) : TARGET_DISPLAY;
-      const initialDomains = allDomains.slice(0, toShowCount);
-      const queueDomains = allDomains.slice(toShowCount);
+      // Add all new domains to state immediately (they show as "Searching...")
+      setDomains(prev => [...prev, ...newDomains]);
+      console.log(`[Generate] Added ${newDomains.length} domains to state`);
 
-      console.log(`[Generate] alreadyShown: ${alreadyShown}, showing ${toShowCount} new domains`);
-
-      const initialResults: DomainResult[] = initialDomains.map(domain => ({
-        domain,
-        available: null, // pending
-      }));
-
-      if (append) {
-        setDomains((prev) => [...prev, ...initialResults]);
-      } else {
-        setDomains(initialResults);
-      }
-
-      pendingQueueRef.current = [...pendingQueueRef.current, ...queueDomains];
-      console.log(`[Generate] Showing ${initialDomains.length} domains, ${queueDomains.length} in queue`);
-
-      // === PHASE 3: Start checking availability using batch API ===
-      // Check all domains in batches of 50 (Namecheap API limit)
-      const allDomainsToCheck = [...initialDomains, ...pendingQueueRef.current];
+      // Check all domains in batches
+      const allDomainsToCheck = newDomains.map(d => d.domain);
       const BATCH_SIZE = 50;
 
-      // Process batches in parallel for speed
-      const batches: string[][] = [];
       for (let i = 0; i < allDomainsToCheck.length; i += BATCH_SIZE) {
-        batches.push(allDomainsToCheck.slice(i, i + BATCH_SIZE));
-      }
+        const batch = allDomainsToCheck.slice(i, i + BATCH_SIZE);
 
-      console.log(`[Generate] Checking ${allDomainsToCheck.length} domains in ${batches.length} batches`);
-
-      // Run all batches in parallel
-      Promise.all(batches.map(async (batch) => {
         try {
           const results = await checkDomainsBatch(batch);
-          results.forEach(updateDomainStatus);
+
+          // Update domain statuses in state
+          setDomains(prev => prev.map(d => {
+            const result = results.find(r => r.domain === d.domain);
+            if (result) {
+              return { ...d, ...result };
+            }
+            return d;
+          }));
         } catch (error) {
           console.error('Batch check failed:', error);
-          batch.forEach(domain => {
-            updateDomainStatus({
-              domain,
-              available: false,
-              error: error instanceof Error ? error.message : 'Batch check failed',
-            });
-          });
+          // Mark batch as errored
+          setDomains(prev => prev.map(d => {
+            if (batch.includes(d.domain)) {
+              return { ...d, available: false, error: 'Check failed' };
+            }
+            return d;
+          }));
         }
-      }));
+      }
 
     } catch (error) {
       console.error('Generation failed:', error);
@@ -182,7 +114,7 @@ export default function Home() {
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedTlds, lastPrompt, updateDomainStatus]);
+  }, [selectedTlds, lastPrompt]);
 
   const handleSearch = useCallback(async (baseName: string) => {
     setIsGenerating(true);
@@ -198,8 +130,7 @@ export default function Home() {
 
     // Clear previous results for search mode
     setDomains([]);
-    pendingQueueRef.current = [];
-    setLeftoverDomains([]);
+    setVisibleCount(DOMAINS_PER_LOAD);
     setPrimaryDomain(`${cleanName}.${selectedTlds[0] || 'com'}`);
 
     // Create domain list for all selected TLDs
@@ -224,32 +155,25 @@ export default function Home() {
     setIsGenerating(false);
   }, [selectedTlds]);
 
-  // Handle Load More - show leftovers first, generate more when queue is low
+  // Derived values - split domains by status
+  const availableOrPending = domains.filter(d => d.available === true || d.available === null);
+  const unavailableDomains = domains.filter(d => d.available === false);
+  const visibleDomains = availableOrPending.slice(0, visibleCount);
+  const hasMoreToShow = availableOrPending.length > visibleCount;
+
+  // Handle Load More - instant UI update, generate more if needed
   const handleLoadMore = useCallback(() => {
-    const queueIsLow = leftoverDomains.length < TARGET_DISPLAY;
+    const newVisibleCount = visibleCount + DOMAINS_PER_LOAD;
+    setVisibleCount(newVisibleCount);
+    console.log(`[Load More] Increased visible count to ${newVisibleCount}`);
 
-    if (leftoverDomains.length > 0) {
-      // Show from leftovers (already checked, available)
-      const toShow = leftoverDomains.slice(0, TARGET_DISPLAY);
-      const remaining = leftoverDomains.slice(TARGET_DISPLAY);
-      const shownCount = toShow.length;
-
-      setDomains((prev) => [...prev, ...toShow]);
-      setLeftoverDomains(remaining);
-      console.log(`[Load More] Showing ${shownCount} from leftovers, ${remaining.length} remaining`);
-
-      // If queue was low BEFORE showing, also generate more
-      // Pass shownCount so generation only fills remaining slots to complete 15
-      if (queueIsLow && !isGenerating) {
-        console.log(`[Load More] Queue was low (${leftoverDomains.length}), generating more (alreadyShown: ${shownCount})`);
-        handleGenerate(lastPrompt, true, shownCount);
-      }
-    } else {
-      // No leftovers, generate more (full 15)
-      console.log(`[Load More] No leftovers, generating more with prompt: "${lastPrompt}"`);
-      handleGenerate(lastPrompt, true, 0);
+    // Check if we need to generate more domains
+    // If available+pending after this load would be below buffer, generate more
+    if (availableOrPending.length < newVisibleCount + GENERATION_BUFFER && !isGenerating && lastPrompt) {
+      console.log(`[Load More] Running low (${availableOrPending.length} available+pending), generating more...`);
+      handleGenerate(lastPrompt, true);
     }
-  }, [leftoverDomains, lastPrompt, isGenerating, handleGenerate]);
+  }, [visibleCount, availableOrPending.length, isGenerating, lastPrompt, handleGenerate]);
 
   return (
     <div className="min-h-screen bg-black">
@@ -342,10 +266,14 @@ export default function Home() {
             </div>
           )}
 
-          <DomainList domains={domains} isLoading={isGenerating} />
+          <DomainList
+            domains={visibleDomains}
+            unavailableDomains={unavailableDomains}
+            isLoading={isGenerating}
+          />
 
-          {/* Load More button - always show after generation */}
-          {hasGenerated && !isGenerating && (
+          {/* Load More button - show when there's more to display OR we can generate more */}
+          {hasGenerated && !isGenerating && (hasMoreToShow || lastPrompt) && (
             <div className="text-center mt-12">
               <button
                 onClick={handleLoadMore}
