@@ -6,7 +6,6 @@ import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
 import DomainList, { DomainResult } from '@/components/DomainList';
 import ThinkingPanel from '@/components/ThinkingPanel';
-import FeedbackInput from '@/components/FeedbackInput';
 import { generateDomainNames } from '@/lib/gemini';
 import { streamDomainGeneration } from '@/lib/gemini-stream';
 import { checkDomainsBatch } from '@/lib/whois';
@@ -366,11 +365,6 @@ export default function Home() {
     });
   }, []);
 
-  // Clear feedback and liked domains
-  const handleClearFeedback = useCallback(() => {
-    setFeedbackInput('');
-    setLikedDomains(new Set());
-  }, []);
 
   return (
     <div className="min-h-screen bg-black">
@@ -430,25 +424,19 @@ export default function Home() {
       {/* Results Section */}
       {hasGenerated && (
         <div className="pb-12">
-          {/* Thinking Panel - shows AI interpretation */}
-          {(isThinking || thinkingText || primaryDomain) && (
+          {/* Thinking Panel - shows AI interpretation and refine input */}
+          {(isThinking || thinkingText || primaryDomain || (!isGenerating && domains.length > 0)) && (
             <ThinkingPanel
               thinkingText={thinkingText}
               isThinking={isThinking}
               primaryDomain={primaryDomain}
-            />
-          )}
-
-          {/* Feedback Input - allows steering/refinement */}
-          {hasGenerated && !isGenerating && domains.length > 0 && (
-            <FeedbackInput
-              value={feedbackInput}
-              onChange={setFeedbackInput}
-              onSubmit={handleRefine}
-              onClear={handleClearFeedback}
+              feedbackValue={feedbackInput}
+              onFeedbackChange={setFeedbackInput}
+              onRefine={handleRefine}
               disabled={isGenerating}
               likedDomains={Array.from(likedDomains)}
               onRemoveLiked={handleRemoveLiked}
+              showFeedback={!isGenerating && domains.length > 0}
             />
           )}
 
