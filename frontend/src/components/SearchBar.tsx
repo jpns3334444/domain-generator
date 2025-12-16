@@ -204,7 +204,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
     );
   }
 
-  // Landing page: original 2-line layout
+  // Landing page: input with 2 action buttons on right
   return (
     <div className="w-full max-w-2xl mx-auto px-4">
       <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
@@ -216,71 +216,38 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
             onChange={(e) => setInputValue(e.target.value)}
             onFocus={handleInputFocus}
             onKeyDown={handleKeyDown}
-            placeholder={mode === 'generate' ? placeholder : 'Enter domain name...'}
+            placeholder={placeholder || 'Describe your business or enter a domain name...'}
             className="flex-1 bg-transparent text-white text-lg placeholder-zinc-500 outline-none py-2 caret-mauve"
             autoComplete="off"
             spellCheck={false}
           />
         </div>
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleModeChange('generate')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                mode === 'generate'
-                  ? 'bg-mauve text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              Generate
-            </button>
-            <button
-              onClick={() => handleModeChange('search')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                mode === 'search'
-                  ? 'bg-mauve text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
-              }`}
-            >
-              <Search className="w-4 h-4" />
-              Search
-            </button>
-          </div>
-          <div className="relative">
-            {showTooltip && mode === 'generate' && (
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-56 animate-fade-in z-10">
-                <div className="bg-zinc-800 text-zinc-300 text-sm p-3 rounded-lg shadow-lg border border-zinc-700">
-                  <p>Click with no prompt to generate random domain names</p>
-                  <div className="absolute top-1/2 -translate-y-1/2 -left-2 w-0 h-0 border-t-8 border-b-8 border-r-8 border-t-transparent border-b-transparent border-r-zinc-800" />
-                </div>
-              </div>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={() => onGenerate(inputValue)}
+            disabled={isGenerating}
+            className="shimmer-button bg-mauve hover:bg-mauve-hover disabled:bg-mauve-disabled disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
+          >
+            {isGenerating ? (
+              <>
+                <GearSpinner size="sm" className="text-lg" />
+                Generating
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Generate
+              </>
             )}
-            <button
-              onClick={handleSubmit}
-              disabled={isGenerating || (mode === 'search' && !inputValue.trim())}
-              className="shimmer-button bg-mauve hover:bg-mauve-hover disabled:bg-mauve-disabled disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
-            >
-              {mode === 'generate' ? (
-                isGenerating ? (
-                  <>
-                    <GearSpinner size="sm" className="text-lg" />
-                    Generating
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    Generate
-                  </>
-                )
-              ) : (
-                <>
-                  <Search className="w-4 h-4" />
-                  Search
-                </>
-              )}
-            </button>
-          </div>
+          </button>
+          <button
+            onClick={() => inputValue.trim() && onSearch(inputValue.trim())}
+            disabled={isGenerating || !inputValue.trim()}
+            className="bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
+          >
+            <Search className="w-4 h-4" />
+            Search
+          </button>
         </div>
       </div>
     </div>
