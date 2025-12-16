@@ -3,6 +3,7 @@
 interface TldSelectorProps {
   selectedTlds: string[];
   onTldChange: (tlds: string[]) => void;
+  compact?: boolean;
 }
 
 const AVAILABLE_TLDS = [
@@ -18,7 +19,7 @@ const AVAILABLE_TLDS = [
   { tld: 'tech', label: '.tech', popular: false },
 ];
 
-export default function TldSelector({ selectedTlds, onTldChange }: TldSelectorProps) {
+export default function TldSelector({ selectedTlds, onTldChange, compact = false }: TldSelectorProps) {
   const toggleTld = (tld: string) => {
     if (selectedTlds.includes(tld)) {
       // Don't allow deselecting the last TLD
@@ -39,8 +40,8 @@ export default function TldSelector({ selectedTlds, onTldChange }: TldSelectorPr
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto px-4 mb-6">
-      <div className="flex items-center justify-between mb-3">
+    <div className={compact ? "w-full max-w-3xl" : "w-full max-w-2xl mx-auto px-4 mb-6"}>
+      <div className={`flex items-center ${compact ? 'gap-4' : 'justify-between'} mb-3`}>
         <span className="text-zinc-400 text-sm">Check extensions:</span>
         <div className="flex gap-2">
           <button
