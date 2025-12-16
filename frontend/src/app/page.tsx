@@ -1,12 +1,17 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
 import DomainList, { DomainResult } from '@/components/DomainList';
+import ThinkingPanel from '@/components/ThinkingPanel';
+import FeedbackInput from '@/components/FeedbackInput';
 import { generateDomainNames } from '@/lib/gemini';
+import { streamDomainGeneration } from '@/lib/gemini-stream';
 import { checkDomainsBatch } from '@/lib/whois';
+import { saveDomain, getSavedDomains, removeDomain } from '@/lib/preferences';
+import { ConversationMessage } from '@/types/conversation';
 
 const DotLottiePlayer = dynamic(
   () => import('@dotlottie/react-player').then((mod) => mod.DotLottiePlayer),
@@ -36,6 +41,28 @@ export default function Home() {
   const [primaryDomain, setPrimaryDomain] = useState<string | null>(null);
   const [lastPrompt, setLastPrompt] = useState<string>('');
   const [visibleCount, setVisibleCount] = useState(DOMAINS_PER_LOAD); // How many available+pending to show
+
+  // Thinking/Streaming state
+  const [thinkingText, setThinkingText] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const [streamingNames, setStreamingNames] = useState<string[]>([]);
+
+  // Feedback/Steering state
+  const [feedbackInput, setFeedbackInput] = useState('');
+  const [likedDomains, setLikedDomains] = useState<Set<string>>(new Set());
+  const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
+
+  // Saved domains state
+  const [savedDomains, setSavedDomains] = useState<Set<string>>(new Set());
+
+  // Load saved domains on mount
+  useEffect(() => {
+    async function loadSavedDomains() {
+      const saved = await getSavedDomains();
+      setSavedDomains(new Set(saved.map(s => s.domain)));
+    }
+    loadSavedDomains();
+  }, []);
 
   const handleGenerate = useCallback(async (prompt: string, append: boolean = false) => {
     console.log(`[Generate] === Generation Started === (append: ${append})`);
@@ -191,6 +218,163 @@ export default function Home() {
     }
   }, [visibleCount, availableOrPending.length, unavailableDomains.length, isGenerating, lastPrompt, handleGenerate]);
 
+  // Handle streaming generation with thinking display
+  const handleGenerateStream = useCallback(async (prompt: string, feedback?: string) => {
+    console.log(`[GenerateStream] === Streaming Generation Started ===`);
+
+    setIsGenerating(true);
+    setIsThinking(true);
+    setHasGenerated(true);
+    setThinkingText('');
+    setStreamingNames([]);
+
+    if (!feedback) {
+      // New generation, not a refinement
+      setLastPrompt(prompt);
+      setDomains([]);
+      setVisibleCount(DOMAINS_PER_LOAD);
+      setPrimaryDomain(null);
+      setLikedDomains(new Set());
+      setConversationHistory([]);
+    }
+
+    const collectedNames: string[] = [];
+    const pendingChecks: string[] = [];
+
+    try {
+      for await (const event of streamDomainGeneration({
+        prompt: feedback ? lastPrompt : prompt,
+        count: GENERATE_COUNT,
+        feedback,
+        likedDomains: Array.from(likedDomains),
+        conversationHistory,
+      })) {
+        if (event.type === 'thinking') {
+          setThinkingText(event.content || '');
+        } else if (event.type === 'domain' && event.name) {
+          collectedNames.push(event.name);
+          setStreamingNames([...collectedNames]);
+
+          // Create domain entries for all TLDs
+          for (const tld of selectedTlds) {
+            const fullDomain = `${event.name}.${tld}`;
+            pendingChecks.push(fullDomain);
+
+            // Add to domains state immediately
+            setDomains(prev => [...prev, { domain: fullDomain, available: null }]);
+
+            // Set primary domain if this is the first one
+            if (!feedback && collectedNames.length === 1 && tld === selectedTlds[0]) {
+              setPrimaryDomain(fullDomain);
+            }
+          }
+
+          // Check availability in batches as names come in
+          if (pendingChecks.length >= 10) {
+            const batchToCheck = [...pendingChecks];
+            pendingChecks.length = 0;
+
+            checkDomainsBatch(batchToCheck).then(results => {
+              setDomains(prev => prev.map(d => {
+                const result = results.find(r => r.domain === d.domain);
+                return result ? { ...d, ...result } : d;
+              }));
+            }).catch(console.error);
+          }
+        } else if (event.type === 'done') {
+          setIsThinking(false);
+        } else if (event.type === 'error') {
+          console.error('Stream error:', event.error);
+        }
+      }
+
+      // Check remaining pending domains
+      if (pendingChecks.length > 0) {
+        const results = await checkDomainsBatch(pendingChecks);
+        setDomains(prev => prev.map(d => {
+          const result = results.find(r => r.domain === d.domain);
+          return result ? { ...d, ...result } : d;
+        }));
+      }
+
+      // Update conversation history
+      if (feedback) {
+        setConversationHistory(prev => [
+          ...prev.slice(-8), // Keep last 4 exchanges (8 messages)
+          { role: 'user', content: feedback, timestamp: Date.now() },
+          { role: 'model', content: `Generated: ${collectedNames.slice(0, 5).join(', ')}...`, timestamp: Date.now() },
+        ]);
+      } else {
+        setConversationHistory([
+          { role: 'user', content: prompt, timestamp: Date.now() },
+          { role: 'model', content: `Generated: ${collectedNames.slice(0, 5).join(', ')}...`, timestamp: Date.now() },
+        ]);
+      }
+
+    } catch (error) {
+      console.error('Stream generation failed:', error);
+      setIsThinking(false);
+    } finally {
+      setIsGenerating(false);
+      setIsThinking(false);
+    }
+  }, [selectedTlds, lastPrompt, likedDomains, conversationHistory]);
+
+  // Handle refinement with feedback
+  const handleRefine = useCallback(() => {
+    if (!feedbackInput.trim()) return;
+
+    const feedback = feedbackInput;
+    setFeedbackInput('');
+    handleGenerateStream(lastPrompt, feedback);
+  }, [feedbackInput, lastPrompt, handleGenerateStream]);
+
+  // Handle save/unsave domain
+  const handleSaveDomain = useCallback(async (domain: string) => {
+    const isCurrentlySaved = savedDomains.has(domain);
+
+    if (isCurrentlySaved) {
+      // Unsave: remove from server and local state
+      const success = await removeDomain(domain);
+      if (success) {
+        setSavedDomains(prev => {
+          const next = new Set(prev);
+          next.delete(domain);
+          return next;
+        });
+        // Also remove from liked domains for steering
+        setLikedDomains(prev => {
+          const next = new Set(prev);
+          next.delete(domain);
+          return next;
+        });
+      }
+    } else {
+      // Save: add to server and local state
+      const success = await saveDomain(domain);
+      if (success) {
+        setSavedDomains(prev => new Set(prev).add(domain));
+        // Also add to liked domains for steering
+        setLikedDomains(prev => new Set(prev).add(domain));
+      }
+    }
+  }, [savedDomains]);
+
+  // Handle removing a liked domain (without affecting saved status)
+  const handleRemoveLiked = useCallback((domain: string) => {
+    setLikedDomains(prev => {
+      const next = new Set(prev);
+      next.delete(domain);
+      return next;
+    });
+  }, []);
+
+  // Clear feedback and liked domains
+  const handleClearFeedback = useCallback(() => {
+    setFeedbackInput('');
+    setLikedDomains(new Set());
+  }, []);
+
   return (
     <div className="min-h-screen bg-black">
       <span className="hidden">Impact-Site-Verification: 664bdf39-f63c-4758-82b9-3a5adfcc8ca0</span>
@@ -213,7 +397,7 @@ export default function Home() {
             then instantly check availability.
           </p>
           <SearchBar
-            onGenerate={handleGenerate}
+            onGenerate={handleGenerateStream}
             onSearch={handleSearch}
             isGenerating={isGenerating}
             compact={false}
@@ -231,7 +415,7 @@ export default function Home() {
       {hasGenerated && (
         <div className="px-12 pt-6 pb-4">
           <SearchBar
-            onGenerate={handleGenerate}
+            onGenerate={handleGenerateStream}
             onSearch={handleSearch}
             isGenerating={isGenerating}
             compact={true}
@@ -269,39 +453,36 @@ export default function Home() {
             </div>
           )}
 
-          {/* Primary domain display */}
-          {primaryDomain && !isGenerating && (
-            <div className="px-12 mb-6">
-              <h2 className="text-4xl md:text-5xl font-bold text-ids-red mb-4">
-                {primaryDomain}
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                  <span>Bookmark</span>
-                </button>
-                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                  <span>Copy URL</span>
-                </button>
-                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                  <span>Pronounce</span>
-                </button>
-                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                  <span>Appraise</span>
-                </button>
-                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                  <span>See More</span>
-                </button>
-                <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                  <span>...</span>
-                </button>
-              </div>
-            </div>
+          {/* Thinking Panel - shows AI interpretation and streaming names */}
+          {(isThinking || thinkingText || streamingNames.length > 0 || (primaryDomain && !isGenerating)) && (
+            <ThinkingPanel
+              thinkingText={thinkingText}
+              isThinking={isThinking}
+              streamingNames={streamingNames}
+              primaryDomain={primaryDomain}
+            />
+          )}
+
+          {/* Feedback Input - allows steering/refinement */}
+          {hasGenerated && !isGenerating && domains.length > 0 && (
+            <FeedbackInput
+              value={feedbackInput}
+              onChange={setFeedbackInput}
+              onSubmit={handleRefine}
+              onClear={handleClearFeedback}
+              disabled={isGenerating}
+              likedDomains={Array.from(likedDomains)}
+              onRemoveLiked={handleRemoveLiked}
+            />
           )}
 
           <DomainList
             domains={visibleDomains}
             unavailableDomains={unavailableDomains}
             isLoading={isGenerating}
+            onSaveDomain={handleSaveDomain}
+            savedDomains={savedDomains}
+            showSaveButton={true}
           />
 
           {/* Load More button - show when there's more to display OR we can generate more */}

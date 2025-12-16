@@ -67,6 +67,22 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
+  UserPreferencesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: domain-generator-user-preferences
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: domain
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: domain
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
   # ============================================
   # VPC and Networking for EC2
   # ============================================
@@ -181,6 +197,13 @@ Resources:
                   - dynamodb:PutItem
                   - dynamodb:Query
                 Resource: !GetAtt DomainsTable.Arn
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                Resource: !GetAtt UserPreferencesTable.Arn
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -267,7 +290,7 @@ Resources:
           const express = require('express');
           const cors = require('cors');
           const { parseStringPromise } = require('xml2js');
-          const { DynamoDBClient, GetItemCommand, PutItemCommand } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBClient, GetItemCommand, PutItemCommand, DeleteItemCommand, QueryCommand } = require('@aws-sdk/client-dynamodb');
 
           const app = express();
           app.use(cors());
@@ -278,6 +301,7 @@ Resources:
           const NAMECHEAP_API_KEY = process.env.NAMECHEAP_API_KEY;
           const NAMECHEAP_CLIENT_IP = process.env.NAMECHEAP_CLIENT_IP;
           const DOMAINS_TABLE = process.env.DOMAINS_TABLE || 'domain-generator-domains';
+          const PREFERENCES_TABLE = process.env.PREFERENCES_TABLE || 'domain-generator-user-preferences';
           const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 
           const dynamodb = new DynamoDBClient({ region: AWS_REGION });
@@ -462,6 +486,73 @@ Resources:
             }
           });
 
+          // User Preferences endpoints
+          app.post('/preferences/save', async (req, res) => {
+            const userId = req.headers['x-user-id'];
+            const { domain } = req.body;
+
+            if (!userId) return res.status(400).json({ error: 'Missing X-User-Id header' });
+            if (!domain) return res.status(400).json({ error: 'Missing domain in body' });
+
+            try {
+              await dynamodb.send(new PutItemCommand({
+                TableName: PREFERENCES_TABLE,
+                Item: {
+                  userId: { S: userId },
+                  domain: { S: domain.toLowerCase() },
+                  savedAt: { N: Date.now().toString() },
+                },
+              }));
+              res.json({ success: true, domain: domain.toLowerCase() });
+            } catch (error) {
+              console.error('Save preference error:', error);
+              res.status(500).json({ error: 'Failed to save preference' });
+            }
+          });
+
+          app.get('/preferences', async (req, res) => {
+            const userId = req.headers['x-user-id'];
+
+            if (!userId) return res.status(400).json({ error: 'Missing X-User-Id header' });
+
+            try {
+              const result = await dynamodb.send(new QueryCommand({
+                TableName: PREFERENCES_TABLE,
+                KeyConditionExpression: 'userId = :uid',
+                ExpressionAttributeValues: { ':uid': { S: userId } },
+              }));
+              const domains = (result.Items || []).map(item => ({
+                domain: item.domain?.S,
+                savedAt: parseInt(item.savedAt?.N || '0'),
+              }));
+              res.json({ domains });
+            } catch (error) {
+              console.error('Get preferences error:', error);
+              res.status(500).json({ error: 'Failed to get preferences' });
+            }
+          });
+
+          app.delete('/preferences/:domain', async (req, res) => {
+            const userId = req.headers['x-user-id'];
+            const domain = req.params.domain;
+
+            if (!userId) return res.status(400).json({ error: 'Missing X-User-Id header' });
+
+            try {
+              await dynamodb.send(new DeleteItemCommand({
+                TableName: PREFERENCES_TABLE,
+                Key: {
+                  userId: { S: userId },
+                  domain: { S: domain.toLowerCase() },
+                },
+              }));
+              res.json({ success: true });
+            } catch (error) {
+              console.error('Delete preference error:', error);
+              res.status(500).json({ error: 'Failed to delete preference' });
+            }
+          });
+
           app.get('/health', (req, res) => {
             res.json({ status: 'ok', timestamp: new Date().toISOString(), config: { namecheapConfigured: !!(NAMECHEAP_API_USER && NAMECHEAP_API_KEY), clientIp: NAMECHEAP_CLIENT_IP } });
           });
@@ -484,6 +575,7 @@ Resources:
           NAMECHEAP_CLIENT_IP=$PUBLIC_IP
           PORT=3000
           DOMAINS_TABLE=${DomainsTable}
+          PREFERENCES_TABLE=${UserPreferencesTable}
           AWS_REGION=${AWS::Region}
           ENVEOF
 
@@ -605,6 +697,27 @@ Resources:
       RestApiId: !Ref WhoisApi
       ParentId: !GetAtt WhoisApi.RootResourceId
       PathPart: pricing
+
+  PreferencesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ParentId: !GetAtt WhoisApi.RootResourceId
+      PathPart: preferences
+
+  PreferencesSaveResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ParentId: !Ref PreferencesResource
+      PathPart: save
+
+  PreferencesDomainResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ParentId: !Ref PreferencesResource
+      PathPart: '{domain}'
 
   # ============================================
   # API Gateway Methods - HTTP_PROXY to EC2
@@ -738,6 +851,147 @@ Resources:
             method.response.header.Access-Control-Allow-Origin: true
 
   # ============================================
+  # API Gateway Methods - Preferences (EC2)
+  # ============================================
+
+  # GET /preferences -> EC2
+  PreferencesGetMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn: EIPAssociation
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref PreferencesResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.header.X-User-Id: true
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: GET
+        Uri: !Sub 'http://${DomainCheckerEIP}:3000/preferences'
+        RequestParameters:
+          integration.request.header.X-User-Id: method.request.header.X-User-Id
+
+  # OPTIONS /preferences for CORS
+  PreferencesOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref PreferencesResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-Id'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # POST /preferences/save -> EC2
+  PreferencesSavePostMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn: EIPAssociation
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref PreferencesSaveResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.header.X-User-Id: true
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'http://${DomainCheckerEIP}:3000/preferences/save'
+        RequestParameters:
+          integration.request.header.X-User-Id: method.request.header.X-User-Id
+
+  # OPTIONS /preferences/save for CORS
+  PreferencesSaveOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref PreferencesSaveResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-Id'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # DELETE /preferences/{domain} -> EC2
+  PreferencesDomainDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn: EIPAssociation
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref PreferencesDomainResource
+      HttpMethod: DELETE
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.header.X-User-Id: true
+        method.request.path.domain: true
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: DELETE
+        Uri: !Sub 'http://${DomainCheckerEIP}:3000/preferences/{domain}'
+        RequestParameters:
+          integration.request.header.X-User-Id: method.request.header.X-User-Id
+          integration.request.path.domain: method.request.path.domain
+
+  # OPTIONS /preferences/{domain} for CORS
+  PreferencesDomainOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WhoisApi
+      ResourceId: !Ref PreferencesDomainResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-Id'"
+              method.response.header.Access-Control-Allow-Methods: "'DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # ============================================
   # API Gateway Methods - Lambda (Prompts only)
   # ============================================
 
@@ -803,6 +1057,12 @@ Resources:
       - PromptsOptionsMethod
       - PricingPostMethod
       - PricingOptionsMethod
+      - PreferencesGetMethod
+      - PreferencesOptionsMethod
+      - PreferencesSavePostMethod
+      - PreferencesSaveOptionsMethod
+      - PreferencesDomainDeleteMethod
+      - PreferencesDomainOptionsMethod
     Properties:
       RestApiId: !Ref WhoisApi
 
@@ -853,3 +1113,11 @@ Outputs:
   DomainsTableName:
     Description: DynamoDB table name for domain cache
     Value: !Ref DomainsTable
+
+  UserPreferencesTableName:
+    Description: DynamoDB table name for user preferences
+    Value: !Ref UserPreferencesTable
+
+  PreferencesEndpoint:
+    Description: User preferences endpoint
+    Value: !Sub https://${WhoisApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/preferences

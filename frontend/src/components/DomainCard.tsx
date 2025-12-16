@@ -1,5 +1,6 @@
 'use client';
 
+import { Heart } from 'lucide-react';
 import { formatPrice, getAffiliateUrl } from '@/lib/pricing';
 
 interface DomainCardProps {
@@ -9,9 +10,22 @@ interface DomainCardProps {
   premiumPrice?: number;
   aftermarket?: boolean;
   error?: string;
+  onSave?: (domain: string) => void;
+  isSaved?: boolean;
+  showSaveButton?: boolean;
 }
 
-export default function DomainCard({ domain, available, premium, premiumPrice, aftermarket, error }: DomainCardProps) {
+export default function DomainCard({
+  domain,
+  available,
+  premium,
+  premiumPrice,
+  aftermarket,
+  error,
+  onSave,
+  isSaved = false,
+  showSaveButton = false,
+}: DomainCardProps) {
   // IDS-style status dots: green for available, orange for taken, gray for searching
   const statusColor = available === null
     ? 'bg-zinc-500' // Searching
@@ -40,6 +54,14 @@ export default function DomainCard({ domain, available, premium, premiumPrice, a
   const isClickable = available || premium || aftermarket;
   const buttonClasses = `px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${getButtonStyle()}`;
 
+  const handleSave = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onSave) {
+      onSave(domain);
+    }
+  };
+
   return (
     <div className="flex items-center justify-between py-1.5 px-1 group">
       <div className="flex items-center gap-2.5">
@@ -48,23 +70,38 @@ export default function DomainCard({ domain, available, premium, premiumPrice, a
           {domain}
         </span>
       </div>
-      {isClickable && !error ? (
-        <a
-          href={getAffiliateUrl(domain)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={buttonClasses}
-        >
-          {getButtonText()}
-        </a>
-      ) : (
-        <button
-          className={buttonClasses}
-          disabled={available === null || (!available && !premium && !aftermarket)}
-        >
-          {getButtonText()}
-        </button>
-      )}
+      <div className="flex items-center gap-1.5">
+        {showSaveButton && (
+          <button
+            onClick={handleSave}
+            className={`p-1.5 rounded transition-colors ${
+              isSaved
+                ? 'text-ids-red'
+                : 'text-zinc-500 hover:text-ids-red opacity-0 group-hover:opacity-100'
+            }`}
+            title={isSaved ? 'Saved' : 'Save to favorites'}
+          >
+            <Heart size={16} fill={isSaved ? 'currentColor' : 'none'} />
+          </button>
+        )}
+        {isClickable && !error ? (
+          <a
+            href={getAffiliateUrl(domain)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonClasses}
+          >
+            {getButtonText()}
+          </a>
+        ) : (
+          <button
+            className={buttonClasses}
+            disabled={available === null || (!available && !premium && !aftermarket)}
+          >
+            {getButtonText()}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

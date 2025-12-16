@@ -17,9 +17,19 @@ interface DomainListProps {
   domains: DomainResult[]; // Already filtered to available + pending, sliced to visible limit
   unavailableDomains?: DomainResult[]; // Separate prop for unavailable
   isLoading: boolean;
+  onSaveDomain?: (domain: string) => void;
+  savedDomains?: Set<string>;
+  showSaveButton?: boolean;
 }
 
-export default function DomainList({ domains, unavailableDomains = [], isLoading }: DomainListProps) {
+export default function DomainList({
+  domains,
+  unavailableDomains = [],
+  isLoading,
+  onSaveDomain,
+  savedDomains = new Set(),
+  showSaveButton = false,
+}: DomainListProps) {
   const [showUnavailable, setShowUnavailable] = useState(false);
 
   if (domains.length === 0 && unavailableDomains.length === 0 && !isLoading) {
@@ -39,6 +49,9 @@ export default function DomainList({ domains, unavailableDomains = [], isLoading
             premiumPrice={domain.premiumPrice}
             aftermarket={domain.aftermarket}
             error={domain.error}
+            onSave={onSaveDomain}
+            isSaved={savedDomains.has(domain.domain)}
+            showSaveButton={showSaveButton}
           />
         ))}
       </div>
@@ -69,6 +82,9 @@ export default function DomainList({ domains, unavailableDomains = [], isLoading
                   premiumPrice={domain.premiumPrice}
                   aftermarket={domain.aftermarket}
                   error={domain.error}
+                  onSave={onSaveDomain}
+                  isSaved={savedDomains.has(domain.domain)}
+                  showSaveButton={showSaveButton}
                 />
               ))}
             </div>
