@@ -14,6 +14,8 @@ if (typeof window !== 'undefined') {
     autocapture: false,
     session_recording: {
       recordCrossOriginIframes: true,
+      maskAllInputs: false,
+      maskTextSelector: null,
     },
     loaded: (posthog) => {
       if (process.env.NODE_ENV === 'development') {
