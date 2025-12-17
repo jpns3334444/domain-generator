@@ -2,29 +2,26 @@
 
 import posthog from 'posthog-js'
 import { PostHogProvider as PHProvider } from 'posthog-js/react'
-import { useEffect } from 'react'
+
+// Initialize PostHog immediately on client side (outside component)
+if (typeof window !== 'undefined') {
+  posthog.init('phc_PoVxjHWcERydfpkrhLiFcLvDfiXVYnMDw3WGNecmOqf', {
+    api_host: 'https://us.i.posthog.com',
+    person_profiles: 'identified_only',
+    capture_pageview: true,
+    capture_pageleave: true,
+    autocapture: true,
+    session_recording: {
+      recordCrossOriginIframes: true,
+    },
+    loaded: (posthog) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[PostHog] Initialized successfully')
+      }
+    },
+  })
+}
 
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    posthog.init('phc_PoVxjHWcERydfpkrhLiFcLvDfiXVYnMDw3WGNecmOqf', {
-      api_host: 'https://us.i.posthog.com',
-      capture_pageview: true,
-      capture_pageleave: true,
-      autocapture: true,
-      session_recording: {
-        recordCrossOriginIframes: true,
-      },
-    })
-
-    // Link existing user ID to PostHog
-    // User IDs are created by getUserId() in preferences.ts when users interact
-    import('@/lib/preferences').then(({ getUserId }) => {
-      const userId = getUserId()
-      if (userId) {
-        posthog.identify(userId)
-      }
-    })
-  }, [])
-
   return <PHProvider client={posthog}>{children}</PHProvider>
 }

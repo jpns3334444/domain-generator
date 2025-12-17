@@ -2,10 +2,12 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import { Heart } from 'lucide-react';
 import SearchBar from '@/components/SearchBar';
 import TldSelector from '@/components/TldSelector';
 import DomainList, { DomainResult } from '@/components/DomainList';
 import ThinkingPanel from '@/components/ThinkingPanel';
+import FavoritesDrawer from '@/components/FavoritesDrawer';
 import { generateDomainNames } from '@/lib/gemini';
 import { streamDomainGeneration } from '@/lib/gemini-stream';
 import { checkDomainsBatch } from '@/lib/whois';
@@ -53,13 +55,15 @@ export default function Home() {
   // Saved domains state
   const [savedDomains, setSavedDomains] = useState<Set<string>>(new Set());
 
+  // Favorites drawer state
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [favoritesCount, setFavoritesCount] = useState(0);
+
   // Load saved domains on mount
   useEffect(() => {
-    async function loadSavedDomains() {
-      const saved = await getSavedDomains();
-      setSavedDomains(new Set(saved.map(s => s.domain)));
-    }
-    loadSavedDomains();
+    const saved = getSavedDomains();
+    setSavedDomains(new Set(saved.map(s => s.domain)));
+    setFavoritesCount(saved.length);
   }, []);
 
   // Helper to scroll to bottom of page
@@ -362,38 +366,32 @@ export default function Home() {
   }, [feedbackInput, lastPrompt, handleGenerateStream, likedDomains.size]);
 
   // Handle save/unsave domain
-  const handleSaveDomain = useCallback(async (domain: string) => {
+  const handleSaveDomain = useCallback((domain: string) => {
     const isCurrentlySaved = savedDomains.has(domain);
 
     trackEvent(AnalyticsEvents.DOMAIN_SAVED, {
       domain,
-      isSaved: !isCurrentlySaved, // Will be saved after this action
+      isSaved: !isCurrentlySaved,
     });
 
     if (isCurrentlySaved) {
-      // Unsave: remove from server and local state
-      const success = await removeDomain(domain);
-      if (success) {
-        setSavedDomains(prev => {
-          const next = new Set(prev);
-          next.delete(domain);
-          return next;
-        });
-        // Also remove from liked domains for steering
-        setLikedDomains(prev => {
-          const next = new Set(prev);
-          next.delete(domain);
-          return next;
-        });
-      }
+      // Unsave: remove from localStorage
+      const updated = removeDomain(domain);
+      setSavedDomains(new Set(updated.map(d => d.domain)));
+      setFavoritesCount(updated.length);
+      // Also remove from liked domains for steering
+      setLikedDomains(prev => {
+        const next = new Set(prev);
+        next.delete(domain);
+        return next;
+      });
     } else {
-      // Save: add to server and local state
-      const success = await saveDomain(domain);
-      if (success) {
-        setSavedDomains(prev => new Set(prev).add(domain));
-        // Also add to liked domains for steering
-        setLikedDomains(prev => new Set(prev).add(domain));
-      }
+      // Save: add to localStorage
+      const updated = saveDomain(domain);
+      setSavedDomains(new Set(updated.map(d => d.domain)));
+      setFavoritesCount(updated.length);
+      // Also add to liked domains for steering
+      setLikedDomains(prev => new Set(prev).add(domain));
     }
   }, [savedDomains]);
 
@@ -410,6 +408,37 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <span className="hidden">Impact-Site-Verification: 664bdf39-f63c-4758-82b9-3a5adfcc8ca0</span>
+
+      {/* Header with favorites */}
+      <header className="fixed top-0 right-0 p-4 z-30">
+        <button
+          onClick={() => setIsDrawerOpen(true)}
+          className="relative p-2 text-zinc-400 hover:text-ids-red transition-colors rounded-lg hover:bg-zinc-800/50"
+          title="View favorites"
+        >
+          <Heart
+            className={`w-6 h-6 ${favoritesCount > 0 ? 'text-ids-red' : ''}`}
+            fill={favoritesCount > 0 ? 'currentColor' : 'none'}
+          />
+          {favoritesCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-ids-red text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-medium">
+              {favoritesCount > 99 ? '99+' : favoritesCount}
+            </span>
+          )}
+        </button>
+      </header>
+
+      {/* Favorites Drawer */}
+      <FavoritesDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onFavoritesChange={(count) => {
+          setFavoritesCount(count);
+          // Also sync savedDomains set
+          const saved = getSavedDomains();
+          setSavedDomains(new Set(saved.map(s => s.domain)));
+        }}
+      />
 
       {/* Hero Section - always visible */}
       <div className="flex flex-col items-center justify-center pt-12 pb-8">
