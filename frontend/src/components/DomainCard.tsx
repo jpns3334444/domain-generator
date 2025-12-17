@@ -2,6 +2,7 @@
 
 import { Heart } from 'lucide-react';
 import { formatPrice, getAffiliateUrl } from '@/lib/pricing';
+import { trackEvent, AnalyticsEvents } from '@/lib/analytics';
 
 interface DomainCardProps {
   domain: string;
@@ -62,6 +63,15 @@ export default function DomainCard({
     }
   };
 
+  const handleAffiliateClick = () => {
+    const status = available ? (premium ? 'premium' : 'available') : (aftermarket ? 'aftermarket' : 'taken');
+    trackEvent(AnalyticsEvents.AFFILIATE_CLICK, {
+      domain,
+      registrar: 'namecheap',
+      status,
+    });
+  };
+
   return (
     <div className="flex items-center justify-between py-1.5 px-1 group">
       <div className="flex items-center gap-2.5">
@@ -90,6 +100,7 @@ export default function DomainCard({
             target="_blank"
             rel="noopener noreferrer"
             className={buttonClasses}
+            onClick={handleAffiliateClick}
           >
             {getButtonContent()}
           </a>

@@ -1,5 +1,7 @@
 'use client';
 
+import { trackEvent, AnalyticsEvents } from '@/lib/analytics';
+
 interface TldSelectorProps {
   selectedTlds: string[];
   onTldChange: (tlds: string[]) => void;
@@ -21,21 +23,36 @@ const AVAILABLE_TLDS = [
 
 export default function TldSelector({ selectedTlds, onTldChange, compact = false }: TldSelectorProps) {
   const toggleTld = (tld: string) => {
-    if (selectedTlds.includes(tld)) {
+    const isCurrentlySelected = selectedTlds.includes(tld);
+    const willBeSelected = !isCurrentlySelected;
+
+    if (isCurrentlySelected) {
       // Don't allow deselecting the last TLD
       if (selectedTlds.length > 1) {
+        trackEvent(AnalyticsEvents.TLD_TOGGLED, {
+          tld,
+          isSelected: willBeSelected,
+          totalSelected: selectedTlds.length - 1,
+        });
         onTldChange(selectedTlds.filter((t) => t !== tld));
       }
     } else {
+      trackEvent(AnalyticsEvents.TLD_TOGGLED, {
+        tld,
+        isSelected: willBeSelected,
+        totalSelected: selectedTlds.length + 1,
+      });
       onTldChange([...selectedTlds, tld]);
     }
   };
 
   const selectAll = () => {
+    trackEvent(AnalyticsEvents.TLD_PRESET_SELECTED, { preset: 'all' });
     onTldChange(AVAILABLE_TLDS.map((t) => t.tld));
   };
 
   const selectPopular = () => {
+    trackEvent(AnalyticsEvents.TLD_PRESET_SELECTED, { preset: 'popular' });
     onTldChange(AVAILABLE_TLDS.filter((t) => t.popular).map((t) => t.tld));
   };
 

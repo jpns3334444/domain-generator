@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Sparkles, Search } from 'lucide-react';
 import GearSpinner from './GearSpinner';
+import { trackEvent, AnalyticsEvents } from '@/lib/analytics';
 
 interface SearchBarProps {
   onGenerate: (prompt: string) => void;
@@ -40,9 +41,12 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
 
   // Dismiss tooltip
   const dismissTooltip = useCallback(() => {
+    if (showTooltip) {
+      trackEvent(AnalyticsEvents.TOOLTIP_DISMISSED);
+    }
     setShowTooltip(false);
     localStorage.setItem('tooltip-dismissed', 'true');
-  }, []);
+  }, [showTooltip]);
 
   // Fetch new prompt from API
   const fetchNewPrompt = useCallback(async (): Promise<string> => {
@@ -124,6 +128,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
   };
 
   const handleInputFocus = () => {
+    trackEvent(AnalyticsEvents.INPUT_FOCUSED, { mode });
     dismissTooltip();
   };
 
@@ -135,6 +140,7 @@ export default function SearchBar({ onGenerate, onSearch, isGenerating, compact 
 
   // Maintain focus when mode changes
   const handleModeChange = (newMode: Mode) => {
+    trackEvent(AnalyticsEvents.MODE_CHANGED, { newMode });
     setMode(newMode);
     // Keep focus on input
     setTimeout(() => {

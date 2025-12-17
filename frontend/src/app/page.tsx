@@ -11,6 +11,7 @@ import { streamDomainGeneration } from '@/lib/gemini-stream';
 import { checkDomainsBatch } from '@/lib/whois';
 import { saveDomain, getSavedDomains, removeDomain } from '@/lib/preferences';
 import { ConversationMessage } from '@/types/conversation';
+import { trackEvent, AnalyticsEvents } from '@/lib/analytics';
 
 const DotLottiePlayer = dynamic(
   () => import('@dotlottie/react-player').then((mod) => mod.DotLottiePlayer),
@@ -37,7 +38,6 @@ export default function Home() {
   const [domains, setDomains] = useState<DomainResult[]>([]); // ALL domains, flat array
   const [selectedTlds, setSelectedTlds] = useState<string[]>(['com']);
   const [hasGenerated, setHasGenerated] = useState(false);
-  const [primaryDomain, setPrimaryDomain] = useState<string | null>(null);
   const [lastPrompt, setLastPrompt] = useState<string>('');
   const [visibleCount, setVisibleCount] = useState(DOMAINS_PER_LOAD); // How many available+pending to show
 
@@ -62,6 +62,13 @@ export default function Home() {
     loadSavedDomains();
   }, []);
 
+  // Helper to scroll to bottom of page
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }, 100);
+  }, []);
+
   const handleGenerate = useCallback(async (prompt: string, append: boolean = false) => {
     console.log(`[Generate] === Generation Started === (append: ${append})`);
 
@@ -72,7 +79,6 @@ export default function Home() {
       setLastPrompt(prompt);
       setDomains([]);
       setVisibleCount(DOMAINS_PER_LOAD);
-      setPrimaryDomain(null);
     }
 
     const activePrompt = append ? lastPrompt : prompt;
@@ -92,11 +98,6 @@ export default function Home() {
             available: null, // pending
           });
         }
-      }
-
-      // Set primary domain from first name
-      if (!append && newDomains.length > 0) {
-        setPrimaryDomain(newDomains[0].domain);
       }
 
       // Add all new domains to state immediately (they show as "Searching...")
@@ -159,6 +160,11 @@ export default function Home() {
     // Clean the base name (remove any TLD if user included it)
     const cleanName = baseName.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
 
+    trackEvent(AnalyticsEvents.SEARCH_PERFORMED, {
+      baseName: cleanName,
+      selectedTlds,
+    });
+
     if (!cleanName) {
       setIsGenerating(false);
       return;
@@ -167,7 +173,6 @@ export default function Home() {
     // Clear previous results for search mode
     setDomains([]);
     setVisibleCount(DOMAINS_PER_LOAD);
-    setPrimaryDomain(`${cleanName}.${selectedTlds[0] || 'com'}`);
 
     // Create domain list for all selected TLDs
     const domainNames = selectedTlds.map((tld) => `${cleanName}.${tld}`);
@@ -201,9 +206,15 @@ export default function Home() {
   const handleLoadMore = useCallback(() => {
     const newVisibleCount = visibleCount + DOMAINS_PER_LOAD;
     setVisibleCount(newVisibleCount);
+    scrollToBottom();
 
     // Calculate reserve (what's left after showing)
     const reserve = availableOrPending.length - newVisibleCount;
+
+    trackEvent(AnalyticsEvents.LOAD_MORE_CLICKED, {
+      visibleCount: newVisibleCount,
+      reserveCount: reserve,
+    });
     const showing = Math.min(newVisibleCount, availableOrPending.length);
     const hidden = Math.max(0, availableOrPending.length - newVisibleCount);
 
@@ -214,21 +225,28 @@ export default function Home() {
       console.log(`[Load More] Reserve (${reserve}) < buffer (${GENERATION_BUFFER}), generating more...`);
       handleGenerate(lastPrompt, true);
     }
-  }, [visibleCount, availableOrPending.length, unavailableDomains.length, isGenerating, lastPrompt, handleGenerate]);
+  }, [visibleCount, availableOrPending.length, unavailableDomains.length, isGenerating, lastPrompt, handleGenerate, scrollToBottom]);
 
   // Handle streaming generation with thinking display
   const handleGenerateStream = useCallback(async (prompt: string, feedback?: string) => {
     console.log(`[GenerateStream] === Streaming Generation Started ===`);
+    const startTime = Date.now();
+
+    trackEvent(AnalyticsEvents.GENERATION_STARTED, {
+      prompt,
+      selectedTlds,
+      hasFeedback: !!feedback,
+    });
 
     setIsGenerating(true);
     setIsThinking(true);
     setHasGenerated(true);
     setThinkingText('');
+    scrollToBottom();
 
     // Always do a fresh load (clear existing domains)
     setDomains([]);
     setVisibleCount(DOMAINS_PER_LOAD);
-    setPrimaryDomain(null);
 
     if (!feedback) {
       // New generation - also reset prompt and conversation
@@ -238,6 +256,7 @@ export default function Home() {
     }
 
     const collectedNames: string[] = [];
+    const seenNames = new Set<string>();
     const pendingChecks: string[] = [];
 
     try {
@@ -247,10 +266,14 @@ export default function Home() {
         feedback,
         likedDomains: Array.from(likedDomains),
         conversationHistory,
+        existingNames: collectedNames,
       })) {
         if (event.type === 'thinking') {
           setThinkingText(event.content || '');
         } else if (event.type === 'domain' && event.name) {
+          // Skip duplicates
+          if (seenNames.has(event.name)) continue;
+          seenNames.add(event.name);
           collectedNames.push(event.name);
 
           // Create domain entries for all TLDs
@@ -260,11 +283,6 @@ export default function Home() {
 
             // Add to domains state immediately
             setDomains(prev => [...prev, { domain: fullDomain, available: null }]);
-
-            // Set primary domain if this is the first one
-            if (collectedNames.length === 1 && tld === selectedTlds[0]) {
-              setPrimaryDomain(fullDomain);
-            }
           }
 
           // Check availability in batches as names come in
@@ -315,21 +333,42 @@ export default function Home() {
     } finally {
       setIsGenerating(false);
       setIsThinking(false);
+
+      // Track generation completion with metrics
+      setDomains(currentDomains => {
+        const availableCount = currentDomains.filter(d => d.available === true).length;
+        trackEvent(AnalyticsEvents.GENERATION_COMPLETED, {
+          domainCount: currentDomains.length,
+          availableCount,
+          durationMs: Date.now() - startTime,
+        });
+        return currentDomains;
+      });
     }
-  }, [selectedTlds, lastPrompt, likedDomains, conversationHistory]);
+  }, [selectedTlds, lastPrompt, likedDomains, conversationHistory, scrollToBottom]);
 
   // Handle refinement with feedback
   const handleRefine = useCallback(() => {
     if (!feedbackInput.trim()) return;
 
+    trackEvent(AnalyticsEvents.FEEDBACK_SUBMITTED, {
+      feedbackText: feedbackInput,
+      likedDomainsCount: likedDomains.size,
+    });
+
     const feedback = feedbackInput;
     setFeedbackInput('');
     handleGenerateStream(lastPrompt, feedback);
-  }, [feedbackInput, lastPrompt, handleGenerateStream]);
+  }, [feedbackInput, lastPrompt, handleGenerateStream, likedDomains.size]);
 
   // Handle save/unsave domain
   const handleSaveDomain = useCallback(async (domain: string) => {
     const isCurrentlySaved = savedDomains.has(domain);
+
+    trackEvent(AnalyticsEvents.DOMAIN_SAVED, {
+      domain,
+      isSaved: !isCurrentlySaved, // Will be saved after this action
+    });
 
     if (isCurrentlySaved) {
       // Unsave: remove from server and local state
@@ -372,9 +411,8 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       <span className="hidden">Impact-Site-Verification: 664bdf39-f63c-4758-82b9-3a5adfcc8ca0</span>
 
-      {/* Hero Section - centered before generation */}
-      {!hasGenerated && (
-        <div className="flex flex-col items-center justify-center min-h-screen">
+      {/* Hero Section - always visible */}
+      <div className="flex flex-col items-center justify-center pt-12 pb-8">
           <div className="w-96 h-96 -mb-32">
             <DotLottiePlayer
               src="/animation.lottie"
@@ -402,46 +440,10 @@ export default function Home() {
             />
           </div>
         </div>
-      )}
 
-      {/* Compact header - top left after generation */}
+      {/* Results Section - appears below hero when generated */}
       {hasGenerated && (
-        <div className="px-12 pt-6 pb-4">
-          <SearchBar
-            onGenerate={handleGenerateStream}
-            onSearch={handleSearch}
-            isGenerating={isGenerating}
-            compact={true}
-            tldSelector={
-              <TldSelector
-                selectedTlds={selectedTlds}
-                onTldChange={setSelectedTlds}
-                compact={true}
-              />
-            }
-          />
-        </div>
-      )}
-
-      {/* Results Section */}
-      {hasGenerated && (
-        <div className="pb-12">
-          {/* Thinking Panel - shows AI interpretation and refine input */}
-          {(isThinking || thinkingText || primaryDomain || (!isGenerating && domains.length > 0)) && (
-            <ThinkingPanel
-              thinkingText={thinkingText}
-              isThinking={isThinking}
-              primaryDomain={primaryDomain}
-              feedbackValue={feedbackInput}
-              onFeedbackChange={setFeedbackInput}
-              onRefine={handleRefine}
-              disabled={isGenerating}
-              likedDomains={Array.from(likedDomains)}
-              onRemoveLiked={handleRemoveLiked}
-              showFeedback={!isGenerating && domains.length > 0}
-            />
-          )}
-
+        <div className="pb-12 px-12">
           <DomainList
             domains={visibleDomains}
             unavailableDomains={unavailableDomains}
@@ -463,6 +465,21 @@ export default function Home() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Floating AI Assistant Panel */}
+      {hasGenerated && (isThinking || thinkingText || (!isGenerating && domains.length > 0)) && (
+        <ThinkingPanel
+          thinkingText={thinkingText}
+          isThinking={isThinking}
+          feedbackValue={feedbackInput}
+          onFeedbackChange={setFeedbackInput}
+          onRefine={handleRefine}
+          disabled={isGenerating}
+          likedDomains={Array.from(likedDomains)}
+          onRemoveLiked={handleRemoveLiked}
+          showFeedback={!isGenerating && domains.length > 0}
+        />
       )}
     </div>
   );
