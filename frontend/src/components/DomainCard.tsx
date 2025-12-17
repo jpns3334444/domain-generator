@@ -36,7 +36,7 @@ export default function DomainCard({
 
   const getButtonContent = () => {
     if (available === null) return 'Searching...';
-    if (error) return 'Error';
+    if (error) return 'Check'; // Allow user to check at registrar
     if (available && premium && premiumPrice) return `${formatPrice(premiumPrice)}`;
     if (available) return 'Continue';
     if (aftermarket) return 'Make offer';
@@ -45,14 +45,14 @@ export default function DomainCard({
 
   const getButtonStyle = () => {
     if (available === null) return 'bg-zinc-800 text-zinc-500 cursor-wait';
-    if (error) return 'bg-zinc-800 text-red-400 cursor-not-allowed';
+    if (error) return 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 cursor-pointer'; // Clickable
     if (available && premium) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-green cursor-pointer';
     if (available) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-green cursor-pointer';
     if (premium || aftermarket) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-cyan cursor-pointer';
     return 'bg-zinc-800 text-zinc-600 cursor-default';
   };
 
-  const isClickable = available || premium || aftermarket;
+  const isClickable = available || premium || aftermarket || error;
   const buttonClasses = `px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${getButtonStyle()}`;
 
   const handleSave = (e: React.MouseEvent) => {
@@ -94,7 +94,7 @@ export default function DomainCard({
             <Heart size={16} fill={isSaved ? 'currentColor' : 'none'} />
           </button>
         )}
-        {isClickable && !error ? (
+        {isClickable ? (
           <a
             href={getAffiliateUrl(domain)}
             target="_blank"

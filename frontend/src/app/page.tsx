@@ -11,6 +11,7 @@ import FavoritesDrawer from '@/components/FavoritesDrawer';
 import { generateDomainNames } from '@/lib/gemini';
 import { streamDomainGeneration } from '@/lib/gemini-stream';
 import { checkDomainsBatch } from '@/lib/whois';
+import { checkPricingBatch } from '@/lib/pricing';
 import { saveDomain, getSavedDomains, removeDomain } from '@/lib/preferences';
 import { ConversationMessage } from '@/types/conversation';
 import { trackEvent, AnalyticsEvents } from '@/lib/analytics';
@@ -450,11 +451,11 @@ export default function Home() {
             />
           </div>
           <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 text-center">
-            Generate Domain Names
+            Describe Your Idea.<br />
+            Get a Domain.
           </h1>
           <p className="text-zinc-400 text-lg md:text-xl text-center max-w-2xl mb-12 px-4">
-            Create unique domain names with AI. Describe your business or generate random names,
-            then instantly check availability.
+            AI finds names you wouldn't think of.
           </p>
           <SearchBar
             onGenerate={handleGenerateStream}
@@ -472,7 +473,7 @@ export default function Home() {
 
       {/* Results Section - appears below hero when generated */}
       {hasGenerated && (
-        <div className="pb-12 px-12">
+        <div className="pb-12">
           <DomainList
             domains={visibleDomains}
             unavailableDomains={unavailableDomains}

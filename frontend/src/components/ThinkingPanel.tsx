@@ -29,7 +29,7 @@ export default function ThinkingPanel({
   showFeedback,
 }: ThinkingPanelProps) {
   const [isFocused, setIsFocused] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && feedbackValue.trim()) {
@@ -62,7 +62,7 @@ export default function ThinkingPanel({
           ) : (
             <span className="text-amber-400 font-mono text-base">⚙</span>
           )}
-          AI
+          Make your prompt better
         </span>
         <ChevronDown
           className={`w-4 h-4 text-zinc-400 transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`}
@@ -92,9 +92,6 @@ export default function ThinkingPanel({
             {/* Liked domains chips */}
             {likedDomains.length > 0 && (
               <div className="mb-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-zinc-400 text-sm font-medium">Liked domains:</span>
-                </div>
                 <div className="flex flex-wrap gap-1.5">
                   {likedDomains.map((domain) => (
                     <span
