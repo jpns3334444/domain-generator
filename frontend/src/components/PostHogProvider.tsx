@@ -6,7 +6,8 @@ import { PostHogProvider as PHProvider } from 'posthog-js/react'
 // Initialize PostHog immediately on client side (outside component)
 if (typeof window !== 'undefined') {
   posthog.init('phc_PoVxjHWcERydfpkrhLiFcLvDfiXVYnMDw3WGNecmOqf', {
-    api_host: 'https://us.i.posthog.com',
+    api_host: '/ingest',
+    ui_host: 'https://us.posthog.com',
     person_profiles: 'identified_only',
     capture_pageview: true,
     capture_pageleave: true,
