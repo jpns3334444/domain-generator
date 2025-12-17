@@ -17,6 +17,7 @@ export interface GenerateStreamRequest {
   feedback?: string;
   likedDomains?: string[];
   conversationHistory?: ConversationMessage[];
+  existingNames?: string[];
 }
 
 export interface SavedDomain {

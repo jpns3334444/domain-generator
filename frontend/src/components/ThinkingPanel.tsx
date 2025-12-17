@@ -1,13 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, ChevronDown } from 'lucide-react';
 import GearSpinner from './GearSpinner';
 
 interface ThinkingPanelProps {
   thinkingText: string;
   isThinking: boolean;
-  primaryDomain: string | null;
   // Feedback props
   feedbackValue: string;
   onFeedbackChange: (value: string) => void;
@@ -21,7 +20,6 @@ interface ThinkingPanelProps {
 export default function ThinkingPanel({
   thinkingText,
   isThinking,
-  primaryDomain,
   feedbackValue,
   onFeedbackChange,
   onRefine,
@@ -31,6 +29,7 @@ export default function ThinkingPanel({
   showFeedback,
 }: ThinkingPanelProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && feedbackValue.trim()) {
@@ -45,25 +44,37 @@ export default function ThinkingPanel({
   }
 
   return (
-    <div className="px-12 mb-6">
-      {/* Primary domain display */}
-      {primaryDomain && (
-        <h2 className="text-4xl md:text-5xl font-bold text-ids-red mb-4">
-          {primaryDomain}
-        </h2>
-      )}
+    <div
+      className={`
+        fixed z-50 transition-all duration-300 ease-in-out
+        bottom-4 right-4 left-4 md:left-auto md:w-96
+        ${isCollapsed ? 'translate-y-[calc(100%-44px)]' : ''}
+      `}
+    >
+      {/* Collapse toggle header */}
+      <button
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        className="w-full bg-zinc-900 border border-zinc-800 border-b-0 rounded-t-lg px-4 py-2.5 flex items-center justify-between hover:bg-zinc-800/50 transition-colors"
+      >
+        <span className="text-zinc-400 text-sm font-medium flex items-center gap-2">
+          {isThinking ? (
+            <GearSpinner size="sm" className="text-base" />
+          ) : (
+            <span className="text-amber-400 font-mono text-base">⚙</span>
+          )}
+          AI
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-zinc-400 transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`}
+        />
+      </button>
 
-      {/* Combined AI Interpretation and Feedback panel */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+      {/* Panel content */}
+      <div className="bg-zinc-900 border border-zinc-800 border-t-0 rounded-b-lg p-4 shadow-lg">
         {/* AI Interpretation section */}
         {(isThinking || thinkingText) && (
           <div className={showFeedback ? 'mb-4' : ''}>
             <div className="flex items-center gap-2 mb-2">
-              {isThinking ? (
-                <GearSpinner size="sm" className="text-base" />
-              ) : (
-                <span className="text-amber-400 font-mono text-base">⚙</span>
-              )}
               <span className="text-zinc-400 text-sm font-medium">AI Interpretation</span>
             </div>
             <p className="text-zinc-300 text-sm leading-relaxed">

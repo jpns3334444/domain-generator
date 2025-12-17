@@ -4,8 +4,8 @@
   --background: #18181B;
   --foreground: #ffffff;
   /* Primary brand color */
-  --mauve: #d97706;
-  --mauve-hover: #b45309;
+  --mauve: #F26E3F;
+  --mauve-hover: #F26E3F;
   --mauve-disabled: #78350f;
   /* IDS-style colors */
   --ids-cyan: #00d4ff;
@@ -13,9 +13,9 @@
   --ids-green: #22c55e;
   --ids-green-hover: #16a34a;
   --ids-red: #ef4444;
-  --ids-orange: #f59e0b;
+  --ids-orange: #F26E3F;
   /* Loading accent */
-  --loading: #fbbf24; /* amber-400 */
+  --loading: #F26E3F; /* amber-400 */
 }
 
 @theme inline {

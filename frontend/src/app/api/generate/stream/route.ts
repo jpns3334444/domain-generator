@@ -13,10 +13,15 @@ interface StreamRequest {
   feedback?: string;
   likedDomains?: string[];
   conversationHistory?: ConversationMessage[];
+  existingNames?: string[];
 }
 
 function buildPrompt(request: StreamRequest): string {
-  const { count = 20, prompt = '', feedback, likedDomains = [] } = request;
+  const { count = 20, prompt = '', feedback, likedDomains = [], existingNames = [] } = request;
+
+  const avoidNamesText = existingNames.length > 0
+    ? `\n\nIMPORTANT: Do NOT generate any of these names (already used): ${existingNames.slice(0, 100).join(', ')}`
+    : '';
 
   // If there's feedback, build a steering prompt
   if (feedback) {
@@ -24,7 +29,7 @@ function buildPrompt(request: StreamRequest): string {
       ? `\n\nThe user liked these domain names: ${likedDomains.join(', ')}`
       : '';
 
-    return `You are a creative domain name generator. The user previously asked for domain names${prompt ? ` related to "${prompt}"` : ''}.${likedContext}
+    return `You are a creative domain name generator. The user previously asked for domain names${prompt ? ` related to "${prompt}"` : ''}.${likedContext}${avoidNamesText}
 
 The user has provided this feedback: "${feedback}"
 
@@ -50,7 +55,7 @@ cloudex`;
 
   // Standard generation prompt
   if (prompt.trim()) {
-    return `You are a creative domain name generator.
+    return `You are a creative domain name generator.${avoidNamesText}
 
 Generate ${count} unique, creative, and memorable domain names (without the TLD extension) for a business related to: "${prompt}"
 
@@ -75,7 +80,7 @@ bytehub`;
   }
 
   // Random generation
-  return `You are a creative domain name generator.
+  return `You are a creative domain name generator.${avoidNamesText}
 
 Generate ${count} unique, creative, and memorable domain names (without the TLD extension).
 
