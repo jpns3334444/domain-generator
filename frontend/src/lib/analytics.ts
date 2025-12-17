@@ -20,6 +20,12 @@ export const AnalyticsEvents = {
   DOMAIN_SAVED: 'domain_saved',
   AFFILIATE_CLICK: 'affiliate_click',
 
+  // Favorites events
+  FAVORITES_DRAWER_OPENED: 'favorites_drawer_opened',
+  FAVORITES_PAGE_VIEWED: 'favorites_page_viewed',
+  FAVORITES_EXPORTED: 'favorites_exported',
+  FAVORITES_COPIED_ALL: 'favorites_copied_all',
+
   // UI events
   INPUT_FOCUSED: 'input_focused',
   MODE_CHANGED: 'mode_changed',
