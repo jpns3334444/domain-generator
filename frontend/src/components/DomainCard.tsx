@@ -27,17 +27,20 @@ export default function DomainCard({
   isSaved = false,
   showSaveButton = false,
 }: DomainCardProps) {
-  // IDS-style status dots: green for available, orange for taken, amber for searching
+  // IDS-style status dots: green for available/premium, orange for taken, amber for searching
   const statusColor = available === null
     ? 'bg-amber-400' // Searching
-    : available
-      ? 'bg-ids-green' // Available
+    : (available || premium) // Premium domains are purchasable at premium price
+      ? 'bg-ids-green' // Available (including premium)
       : 'bg-ids-orange'; // Taken
 
   const getButtonContent = () => {
     if (available === null) return 'Searching...';
     if (error) return 'Check'; // Allow user to check at registrar
-    if (available && premium && premiumPrice) return `${formatPrice(premiumPrice)}`;
+    // Premium domains - show price regardless of 'available' flag
+    // (Namecheap returns available=false for premium domains that are purchasable)
+    if (premium && premiumPrice) return `${formatPrice(premiumPrice)}`;
+    if (premium) return 'Check Price';
     if (available) return 'Continue';
     if (aftermarket) return 'Make offer';
     return 'Taken';
@@ -46,9 +49,9 @@ export default function DomainCard({
   const getButtonStyle = () => {
     if (available === null) return 'bg-zinc-800 text-zinc-500 cursor-wait';
     if (error) return 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 cursor-pointer'; // Clickable
-    if (available && premium) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-green cursor-pointer';
+    if (premium) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-green cursor-pointer'; // Premium purchasable
     if (available) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-green cursor-pointer';
-    if (premium || aftermarket) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-cyan cursor-pointer';
+    if (aftermarket) return 'bg-zinc-800 hover:bg-zinc-700 text-ids-cyan cursor-pointer';
     return 'bg-zinc-800 text-zinc-600 cursor-default';
   };
 

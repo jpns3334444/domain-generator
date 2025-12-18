@@ -86,6 +86,9 @@ Resources:
   # ============================================
   # VPC and Networking for EC2
   # ============================================
+  # NOTE: The EC2 instance below handles ALL domain availability checking
+  # via the Namecheap API. The Lambda whois.ts handler is NOT used.
+  # See backend/src/handlers/whois.ts for the deprecated DNS/RDAP code.
 
   DomainCheckerVPC:
     Type: AWS::EC2::VPC

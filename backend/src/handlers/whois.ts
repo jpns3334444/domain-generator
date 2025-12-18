@@ -1,3 +1,16 @@
+/**
+ * @deprecated THIS LAMBDA HANDLER IS NOT USED.
+ *
+ * Domain availability checking is now handled by the EC2 Express server
+ * defined in cloudformation.yaml, which uses the Namecheap API directly.
+ *
+ * This file contains the old DNS/RDAP-based implementation and is kept
+ * for reference only. None of these handlers are deployed or called.
+ *
+ * For the active implementation, see:
+ * - cloudformation.yaml (EC2 UserData section with embedded Express server)
+ */
+
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient, GetItemCommand, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import * as dns from 'dns';

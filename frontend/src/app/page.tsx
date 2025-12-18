@@ -454,7 +454,7 @@ export default function Home() {
             Describe Your Idea.<br />
             Get a Domain.
           </h1>
-          <p className="text-zinc-400 text-lg md:text-xl text-center max-w-2xl mb-12 px-4">
+          <p className="text-zinc-300 text-lg md:text-xl text-center max-w-2xl mb-12 px-4">
             AI finds names you wouldn't think of.
           </p>
           <SearchBar
